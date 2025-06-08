@@ -3,110 +3,186 @@ import sys
 import os
 
 from camera import Camera
-from character import Character # Assuming BLUE is defined in character.py or a config.py
-from dialogue_system import DialogueSystem # Assuming colors are in dialogue_system.py or config
+from character import Character
+from dialogue_system import DialogueSystem
 from story import Story
-from config import WIDTH, HEIGHT, FPS, MAP_WIDTH, MAP_HEIGHT, BLACK, BLUE, WHITE, DARK_GRAY
+# Import global MAP_WIDTH, MAP_HEIGHT as fallbacks or for initial setup if needed
+from config import WIDTH, HEIGHT, FPS, MAP_WIDTH as DEFAULT_MAP_WIDTH, MAP_HEIGHT as DEFAULT_MAP_HEIGHT, BLACK, BLUE, WHITE, DARK_GRAY
 
 
 class Game:
     def __init__(self):
         pygame.init()
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
-        pygame.display.set_caption("Visual Novel - Demo Medieval")
+        pygame.display.set_caption("Vult Game")
         self.clock = pygame.time.Clock()
         self.running = True
         self.game_state = "map"
         
         self.font = pygame.font.Font(None, 24)
-        # Passa WIDTH e HEIGHT para DialogueSystem
         self.dialogue_system = DialogueSystem(self.screen, self.font, WIDTH, HEIGHT)
         
-        # Define sprite paths for the player
         player_sprite_paths = {
             "frente": os.path.join("src", "assets", "sprite_knight_frente.png"),
             "costas": os.path.join("src", "assets", "sprite_knight_costas.png"),
             "esquerda": os.path.join("src", "assets", "sprite_knight_esquerda.png"),
             "direita": os.path.join("src", "assets", "sprite_knight_direita.png"),
-            # Add attack and defense sprites if needed for other actions
-            # "ataque": os.path.join("src", "assets", "sprite_knight_ataque.png"),
-            # "defesa": os.path.join("src", "assets", "sprite_knight_defesa.png"),
         }
-        # For NPCs, you can use a simpler setup or a similar directional one
         npc_sprite_paths = {
-            "frente": os.path.join("src", "assets", "sprite_knight_frente.png") # Default for NPCs
+            "frente": os.path.join("src", "assets", "sprite_knight_frente.png")
         }
 
-        # Player starting position: Horizontally centered, bottom of the map
-        player_start_x = MAP_WIDTH // 2
-        # Assuming self.player.map_sprite_size is the height of the player on the map
-        # We'll need to instantiate the player first to get this, or use a fixed value if known
-        # For now, let's assume a known/typical sprite size for initial y calculation, then refine if needed
-        # Or, better, calculate it based on player's actual map_sprite_size after instantiation.
-        # Let's instantiate with a placeholder Y and then adjust, or use a known value.
-        # player_start_y = MAP_HEIGHT - A_KNOWN_PLAYER_SPRITE_HEIGHT_ON_MAP 
-        # For simplicity now, let's use a direct calculation, assuming player object is available or its size is known.
-        # We will define player_start_y after player object is created to use its map_sprite_size.
-
-        self.player = Character("Cavaleiro", BLUE, map_x=player_start_x, map_y=0, sprite_paths=player_sprite_paths) # Pass sprite_paths
-        player_start_y = MAP_HEIGHT - self.player.map_sprite_height # Use map_sprite_height
-        self.player.map_y = player_start_y # Set the correct map_y
-
+        # Player starting position will be relative to the first map's dimensions
+        # We'll set it properly after loading the first map's info.
+        self.player = Character("Cavaleiro", BLUE, map_x=0, map_y=0, sprite_paths=player_sprite_paths)
+        
         self.npcs = {
             "blacksmith": Character("Ferreiro", (100,100,100), map_x=100, map_y=100, sprite_paths=npc_sprite_paths),
-            "merchant": Character("Mercador", (0,100,0), map_x=MAP_WIDTH - 150, map_y=MAP_HEIGHT -150, sprite_paths=npc_sprite_paths)
+            "merchant": Character("Mercador", (0,100,0), map_x=DEFAULT_MAP_WIDTH - 250, map_y=DEFAULT_MAP_HEIGHT -250, sprite_paths=npc_sprite_paths) # Initial pos, might need adjustment per map
         }
         self.characters = {"protagonist": self.player}
         self.characters.update(self.npcs)
 
-        # Configuração das histórias dos NPCs
         blacksmith_story = Story()
         blacksmith_story.scenes = [
-            {"background": "floresta_medieval", "character": "blacksmith", "text": "Olá, nobre cavaleiro! Precisa de uma espada afiada?"},
-            {"background": "floresta_medieval", "character": "blacksmith", "text": "Minhas forjas estão sempre quentes!"}
+            {"character": "blacksmith", "text": "Olá, nobre cavaleiro! Precisa de uma espada afiada?"},
+            {"character": "blacksmith", "text": "Minhas forjas estão sempre quentes!"}
         ]
         self.npcs["blacksmith"].story = blacksmith_story
 
         merchant_story = Story()
         merchant_story.scenes = [
-            {"background": "floresta_medieval", "character": "merchant", "text": "Mercadorias raras, direto de terras distantes!"},
-            {"background": "floresta_medieval", "character": "merchant", "text": "Tenho poções e artefatos, se tiveres ouro."}
+            {"character": "merchant", "text": "Mercadorias raras, direto de terras distantes!"},
+            {"character": "merchant", "text": "Tenho poções e artefatos, se tiveres ouro."}
         ]
         self.npcs["merchant"].story = merchant_story
         
         self.current_dialogue_story = None
-        self.current_background = "floresta_medieval"
-        self.camera = Camera(WIDTH, HEIGHT, MAP_WIDTH, MAP_HEIGHT)
-        self.dialogue_exit_active = False # Flag to manage dialogue re-triggering
+        self.tile_size = 100 # Define tile_size before map_definitions if used in target_player_pos calculations
 
-        # Load tiles
-        self.tile_size = 100 # Or your desired tile size
+        self.map_definitions = {
+            "mundo_principal": {
+                "layout_file": os.path.join("src", "assets", "map_layout.map"),
+                "background_image": os.path.join("src", "assets", "map_image.png"),
+                "pixel_width": 2000, 
+                "pixel_height": 2000,
+                "portals": {
+                    (9, 11): {"target_map_key": "caverna_secreta", "target_player_pos": (150, 600)}, 
+                    (10, 11): {"target_map_key": "caverna_secreta", "target_player_pos": (150, 600)},
+                    (9, 12): {"target_map_key": "caverna_secreta", "target_player_pos": (150, 600)},
+                    (10, 12): {"target_map_key": "caverna_secreta", "target_player_pos": (150, 600)},
+                }
+            },
+            "caverna_secreta": {
+                "layout_file": os.path.join("src", "assets", "map_caverna.map"),
+                "background_image": os.path.join("src", "assets", "caverna_bg.png"),
+                "pixel_width": 1000,  # Largura do padrão original da caverna
+                "pixel_height": 342, # Altura da caverna
+                "repeat_x": 3, # Repetir o padrão da caverna 3 vezes horizontalmente
+                "portals": {
+                    # Portal na primeira instância do padrão
+                    (5, 3): {"target_map_key": "mundo_principal", "target_player_pos": (9 * self.tile_size + self.tile_size // 2, 13 * self.tile_size)},
+                    # Se houver um portal de saída em cada repetição, eles podem ser definidos dinamicamente ou
+                    # a lógica de detecção de portal precisará considerar repeat_x.
+                    # Por simplicidade, vamos assumir que a lógica de detecção de portal lidará com isso.
+                }
+            }
+        }
+        self.current_map_key = "mundo_principal"
+        self.current_map_info = self.map_definitions[self.current_map_key]
+        
+        # Calcular a largura efetiva do mapa atual (considerando a repetição)
+        self.current_map_effective_pixel_width = self.current_map_info.get("pixel_width", DEFAULT_MAP_WIDTH) * self.current_map_info.get("repeat_x", 1)
+        self.current_map_pixel_height = self.current_map_info.get("pixel_height", DEFAULT_MAP_HEIGHT)
+
+
+        # Set initial player position based on the first map
+        # initial_map_pixel_width = self.current_map_info["pixel_width"] # Use effective width for camera
+        self.player.map_x = self.current_map_effective_pixel_width // 2
+        self.player.map_y = self.current_map_pixel_height - self.player.map_sprite_height
+        
+        # Initialize camera with the dimensions of the first loaded map
+        self.camera = Camera(WIDTH, HEIGHT, self.current_map_effective_pixel_width, self.current_map_pixel_height)
+        self.dialogue_exit_active = False
+
         self.tiles = {
             "g0": pygame.image.load(os.path.join("src", "assets", "grama_tile_0.png")).convert_alpha(),
             "g90": pygame.image.load(os.path.join("src", "assets", "grama_tile_90.png")).convert_alpha(),
             "g180": pygame.image.load(os.path.join("src", "assets", "grama_tile_180.png")).convert_alpha(),
             "g270": pygame.image.load(os.path.join("src", "assets", "grama_tile_270.png")).convert_alpha(),
             "s": pygame.image.load(os.path.join("src", "assets", "areia.png")).convert_alpha(),
+            "p": pygame.Surface((self.tile_size, self.tile_size), pygame.SRCALPHA)
         }
-        # Scale tiles if necessary
+        self.tiles["p"].fill((0,0,0,0))
+
         for key in self.tiles:
             self.tiles[key] = pygame.transform.scale(self.tiles[key], (self.tile_size, self.tile_size))
 
-        self.map_data = self.load_map_data(os.path.join("src", "assets", "map_layout.map"))
+        self.map_data = []
         self.collision_map_rects = []
-        self.blocking_tile_keys = ['x', 'g0', 'g90', 'g180', 'g270'] # Define blocking tile keys including grass
+        self.blocking_tile_keys = ['x', 'g0', 'g90', 'g180', 'g270'] 
+        
+        self._load_current_map_assets()
+
+    def _load_current_map_assets(self):
+        # Largura do padrão original do mapa
+        base_map_pixel_width = self.current_map_info["pixel_width"]
+        # Altura do mapa
+        current_map_pixel_height = self.current_map_info["pixel_height"]
+        # Fator de repetição
+        repeat_x = self.current_map_info.get("repeat_x", 1)
+        # Largura efetiva total do mapa
+        self.current_map_effective_pixel_width = base_map_pixel_width * repeat_x
+
+        try:
+            # Carrega a imagem de fundo base (para uma única instância do padrão)
+            self.current_background_image_pattern = pygame.image.load(self.current_map_info["background_image"]).convert()
+            # Escala a imagem de fundo base para as dimensões do padrão original
+            self.current_background_image_pattern = pygame.transform.scale(self.current_background_image_pattern, (base_map_pixel_width, current_map_pixel_height))
+        except pygame.error as e:
+            print(f"Error loading background for {self.current_map_key}: {e}")
+            self.current_background_image_pattern = pygame.Surface((base_map_pixel_width, current_map_pixel_height))
+            self.current_background_image_pattern.fill(BLACK)
+
+        self.map_data = self.load_map_data(self.current_map_info["layout_file"])
         self._create_collision_rects()
+
+    def switch_map(self, new_map_key, player_start_pos):
+        print(f"Switching map to {new_map_key}, player to {player_start_pos}")
+        self.current_map_key = new_map_key
+        self.current_map_info = self.map_definitions[self.current_map_key]
+        
+        # Recalcular dimensões efetivas para o novo mapa
+        base_map_pixel_width = self.current_map_info["pixel_width"]
+        self.current_map_pixel_height = self.current_map_info["pixel_height"]
+        repeat_x = self.current_map_info.get("repeat_x", 1)
+        self.current_map_effective_pixel_width = base_map_pixel_width * repeat_x
+
+        self._load_current_map_assets() 
+        
+        self.player.map_x, self.player.map_y = player_start_pos
+        
+        self.camera.map_width = self.current_map_effective_pixel_width
+        self.camera.map_height = self.current_map_pixel_height
+        self.camera.update(self.player)
 
     def _create_collision_rects(self):
         self.collision_map_rects = []
-        for row_index, row_data in enumerate(self.map_data):
-            for col_index, tile_key in enumerate(row_data):
-                if tile_key in self.blocking_tile_keys: # Check if the tile_key is in the list of blocking keys
-                    rect = pygame.Rect(col_index * self.tile_size, 
-                                       row_index * self.tile_size, 
-                                       self.tile_size, 
-                                       self.tile_size)
-                    self.collision_map_rects.append(rect)
+        base_map_pixel_width = self.current_map_info["pixel_width"] # Largura do padrão
+        repeat_x = self.current_map_info.get("repeat_x", 1)
+
+        for i in range(repeat_x): # Para cada repetição do padrão
+            offset_x = i * base_map_pixel_width
+            for row_index, row_data in enumerate(self.map_data):
+                for col_index, tile_key in enumerate(row_data):
+                    if tile_key in self.blocking_tile_keys:
+                        rect = pygame.Rect(
+                            col_index * self.tile_size + offset_x, 
+                            row_index * self.tile_size, 
+                            self.tile_size, 
+                            self.tile_size
+                        )
+                        self.collision_map_rects.append(rect)
 
     def load_map_data(self, map_file_path):
         map_data = []
@@ -118,36 +194,64 @@ class Game:
             print(f"Error: Map file not found at {map_file_path}")
             # Create a default empty map or handle error as needed
             # For now, let's assume a map that's 10x10 of '0' if file not found
-            num_cols = MAP_WIDTH // self.tile_size
-            num_rows = MAP_HEIGHT // self.tile_size
+            num_cols = DEFAULT_MAP_WIDTH // self.tile_size
+            num_rows = DEFAULT_MAP_HEIGHT // self.tile_size
             map_data = [['0' for _ in range(num_cols)] for _ in range(num_rows)]
         return map_data
 
-    def draw_background(self, background_name):
-        # Load the map image
-        map_image_path = os.path.join("src", "assets", "map_image.png")
-        try:
-            map_image = pygame.image.load(map_image_path).convert()
-            map_image = pygame.transform.scale(map_image, (MAP_WIDTH, MAP_HEIGHT))
-            # Blit the map image as the background
-            self.screen.blit(map_image, (self.camera.camera_rect.x, self.camera.camera_rect.y))
-        except pygame.error as e:
-            print(f"Error loading base map image: {e}")
-            self.screen.fill(BLACK) # Fallback to black background
+    def draw_background(self): 
+        base_map_pixel_width = self.current_map_info["pixel_width"]
+        repeat_x = self.current_map_info.get("repeat_x", 1)
 
-        # Overlay tiles based on self.map_data
+        # Desenhar a imagem de fundo repetida
+        for i in range(repeat_x):
+            try:
+                self.screen.blit(
+                    self.current_background_image_pattern, 
+                    (i * base_map_pixel_width + self.camera.camera_rect.x, self.camera.camera_rect.y)
+                )
+            except pygame.error as e:
+                print(f"Error blitting background part for {self.current_map_key}: {e}")
+                # Desenhar um placeholder preto para a parte do fundo que falhou
+                placeholder_rect = pygame.Rect(
+                    i * base_map_pixel_width + self.camera.camera_rect.x, 
+                    self.camera.camera_rect.y,
+                    base_map_pixel_width,
+                    self.current_map_pixel_height 
+                )
+                pygame.draw.rect(self.screen, BLACK, placeholder_rect)
+
+
+        # Overlay tiles based on self.map_data, considerando a repetição
+        tiles_in_pattern_width = base_map_pixel_width // self.tile_size
+        
+        # Determinar o range de colunas de tiles visíveis na tela para otimizar o desenho
+        # Isso considera a posição da câmera e a largura da tela
+        # Coordenada X do início da câmera no mundo do jogo
+        camera_world_x = -self.camera.camera_rect.x
+        # Coluna do tile inicial visível (no mapa grande/repetido)
+        start_col_on_screen = camera_world_x // self.tile_size
+        # Coluna do tile final visível (no mapa grande/repetido)
+        end_col_on_screen = (camera_world_x + WIDTH) // self.tile_size + 1 # +1 para garantir que tiles parciais sejam desenhados
+
         for row_index, row_data in enumerate(self.map_data):
-            for col_index, tile_key in enumerate(row_data):
-                tile_image = self.tiles.get(tile_key)
-                if tile_image:
-                    x = col_index * self.tile_size + self.camera.camera_rect.x
-                    y = row_index * self.tile_size + self.camera.camera_rect.y
-                    
-                    # Only draw if tile is on screen
-                    tile_rect = pygame.Rect(x, y, self.tile_size, self.tile_size)
-                    screen_rect = self.screen.get_rect()
-                    if tile_rect.colliderect(screen_rect):
-                         self.screen.blit(tile_image, (x, y))
+            # Itera apenas sobre as colunas que podem estar visíveis
+            for col_on_large_map in range(int(start_col_on_screen), int(end_col_on_screen) +1):
+                # Mapeia a coluna do mapa grande de volta para a coluna no padrão original
+                col_in_pattern = col_on_large_map % tiles_in_pattern_width
+                
+                if 0 <= col_in_pattern < len(row_data): # Verifica se col_in_pattern é válido para row_data
+                    tile_key = row_data[col_in_pattern]
+                    tile_image = self.tiles.get(tile_key)
+                    if tile_image:
+                        # Posição X do tile no mapa grande/repetido
+                        x = col_on_large_map * self.tile_size + self.camera.camera_rect.x
+                        y = row_index * self.tile_size + self.camera.camera_rect.y
+                        
+                        tile_rect_on_screen = pygame.Rect(x, y, self.tile_size, self.tile_size)
+                        # Verifica se o tile está realmente na tela antes de desenhar (dupla checagem, mas útil)
+                        if self.screen.get_rect().colliderect(tile_rect_on_screen):
+                             self.screen.blit(tile_image, (x, y))
 
     def events(self):
         for event in pygame.event.get():
@@ -205,19 +309,41 @@ class Game:
                 dy = self.player.player_speed
                 self.player.current_direction = "frente"
             
-            # More nuanced direction handling for diagonal or last direction if no new input
-            if not any_key_pressed: # If no movement key is pressed, keep last direction for animation
-                pass # self.player.current_direction remains as it was
-            elif dx != 0 and dy != 0: # Diagonal movement, prioritize horizontal or last set
-                # This simple example prioritizes the last key pressed for direction if multiple are held.
-                # For more complex diagonal sprites, you'd need specific diagonal assets and logic.
-                pass # Direction is already set by individual key checks
-            elif dx == 0 and dy == 0: # No new movement, but a key might have been released
-                 # Keep current direction if was moving, or default to frente if just stopped
-                pass # Covered by not any_key_pressed or individual key logic
+            if not any_key_pressed: pass 
+            elif dx != 0 and dy != 0: pass 
+            elif dx == 0 and dy == 0: pass
 
-            if dx != 0 or dy != 0: self.player.move(dx, dy, MAP_WIDTH, MAP_HEIGHT, self.collision_map_rects)
+            # Use current map's dimensions for player movement boundaries
+            # current_map_pixel_width = self.current_map_info["pixel_width"] # Isso foi movido para self.current_map_effective_pixel_width
+            # current_map_pixel_height = self.current_map_info["pixel_height"]
+            if dx != 0 or dy != 0: self.player.move(dx, dy, self.current_map_effective_pixel_width, self.current_map_pixel_height, self.collision_map_rects)
             self.player.update_animation()
+
+            player_feet_x = self.player.map_x + self.player.collision_box_offset_x + self.player.collision_box_width // 2
+            player_feet_y = self.player.map_y + self.player.collision_box_offset_y + self.player.collision_box_height // 2
+            
+            # Coordenada da coluna do tile no mapa grande/repetido
+            tile_col_on_large_map = int(player_feet_x // self.tile_size)
+            tile_row = int(player_feet_y // self.tile_size) # Linha não é afetada pela repetição horizontal
+
+            # Largura do padrão original em tiles
+            base_pattern_width_tiles = self.current_map_info["pixel_width"] // self.tile_size
+            
+            # Mapeia a coluna do tile no mapa grande de volta para a coluna no padrão original
+            tile_col_in_pattern = tile_col_on_large_map % base_pattern_width_tiles
+            
+            current_tile_coords_in_pattern = (tile_col_in_pattern, tile_row)
+            
+            # Verifica se as coordenadas no padrão são válidas antes de acessar map_data
+            if 0 <= tile_row < len(self.map_data) and \
+               0 <= tile_col_in_pattern < (len(self.map_data[tile_row]) if self.map_data and tile_row < len(self.map_data) else 0) :
+                current_tile_key = self.map_data[tile_row][tile_col_in_pattern]
+                if current_tile_key == 'p':
+                    # A chave do portal em self.current_map_info[\"portals\"] deve ser a coordenada no padrão
+                    if current_tile_coords_in_pattern in self.current_map_info.get("portals", {}):
+                        portal_data = self.current_map_info["portals"][current_tile_coords_in_pattern]
+                        self.switch_map(portal_data["target_map_key"], portal_data["target_player_pos"])
+                        return 
             
             for npc in self.npcs.values():
                 # NPCs can also have directions, but for now, they face "frente" and animate if set
@@ -267,7 +393,7 @@ class Game:
 
     def draw(self):
         self.screen.fill(BLACK)
-        self.draw_background(self.current_background)
+        self.draw_background() # No longer needs background_name
 
         if self.game_state == "map":
             player_map_pos_rect = pygame.Rect(self.player.map_x, self.player.map_y, self.player.map_sprite_width, self.player.map_sprite_height)
