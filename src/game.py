@@ -75,7 +75,8 @@ class Game:
             },
             "caverna_secreta": {
                 "layout_file": os.path.join("src", "assets", "map_caverna.map"),
-                "background_image": os.path.join("src", "assets", "caverna_bg.png"),
+                "background_image": os.path.join("src", "assets", "caverna_bg_animated.png"), # Updated
+                "background_animation_frames": 4, # Added
                 "pixel_width": 1000,  # Largura do padrão original da caverna
                 "pixel_height": 342, # Altura da caverna
                 "repeat_x": 3, # Repetir o padrão da caverna 3 vezes horizontalmente
@@ -104,6 +105,13 @@ class Game:
         # Initialize camera with the dimensions of the first loaded map
         self.camera = Camera(WIDTH, HEIGHT, self.current_map_effective_pixel_width, self.current_map_pixel_height)
         self.dialogue_exit_active = False
+
+        # Background animation attributes
+        self.background_animation_frames_surfaces = []
+        self.current_background_animation_frame_index = 0
+        self.background_animation_timer = 0
+        self.background_animation_speed = 15 # Adjust for desired animation speed (e.g., 15 ticks per frame)
+
 
         self.tiles = {
             "g0": pygame.image.load(os.path.join("src", "assets", "grama_tile_0.png")).convert_alpha(),
@@ -134,15 +142,40 @@ class Game:
         # Largura efetiva total do mapa
         self.current_map_effective_pixel_width = base_map_pixel_width * repeat_x
 
+        # Reset background animation frames
+        self.background_animation_frames_surfaces = []
+        self.current_background_animation_frame_index = 0
+        self.background_animation_timer = 0
+
+        num_anim_frames = self.current_map_info.get("background_animation_frames")
+
         try:
-            # Carrega a imagem de fundo base (para uma única instância do padrão)
-            self.current_background_image_pattern = pygame.image.load(self.current_map_info["background_image"]).convert()
-            # Escala a imagem de fundo base para as dimensões do padrão original
-            self.current_background_image_pattern = pygame.transform.scale(self.current_background_image_pattern, (base_map_pixel_width, current_map_pixel_height))
+            if num_anim_frames and num_anim_frames > 0:
+                spritesheet = pygame.image.load(self.current_map_info["background_image"]).convert_alpha()
+                spritesheet_width = spritesheet.get_width()
+                spritesheet_height = spritesheet.get_height()
+                frame_width = spritesheet_width // num_anim_frames
+
+                for i in range(num_anim_frames):
+                    frame_surface = spritesheet.subsurface(pygame.Rect(i * frame_width, 0, frame_width, spritesheet_height))
+                    scaled_frame = pygame.transform.scale(frame_surface, (base_map_pixel_width, current_map_pixel_height))
+                    self.background_animation_frames_surfaces.append(scaled_frame)
+                
+                if self.background_animation_frames_surfaces:
+                    self.current_background_image_pattern = self.background_animation_frames_surfaces[0] # Set initial pattern
+                else: # Fallback if slicing failed
+                    self.current_background_image_pattern = pygame.Surface((base_map_pixel_width, current_map_pixel_height))
+                    self.current_background_image_pattern.fill(BLACK)
+
+            else: # Static background
+                self.current_background_image_pattern = pygame.image.load(self.current_map_info["background_image"]).convert()
+                self.current_background_image_pattern = pygame.transform.scale(self.current_background_image_pattern, (base_map_pixel_width, current_map_pixel_height))
+        
         except pygame.error as e:
             print(f"Error loading background for {self.current_map_key}: {e}")
             self.current_background_image_pattern = pygame.Surface((base_map_pixel_width, current_map_pixel_height))
             self.current_background_image_pattern.fill(BLACK)
+            self.background_animation_frames_surfaces = [] # Ensure it's cleared on error
 
         self.map_data = self.load_map_data(self.current_map_info["layout_file"])
         self._create_collision_rects()
@@ -203,11 +236,23 @@ class Game:
         base_map_pixel_width = self.current_map_info["pixel_width"]
         repeat_x = self.current_map_info.get("repeat_x", 1)
 
+        pattern_to_draw = None
+        if self.background_animation_frames_surfaces:
+            pattern_to_draw = self.background_animation_frames_surfaces[self.current_background_animation_frame_index]
+        elif hasattr(self, 'current_background_image_pattern') and self.current_background_image_pattern:
+            pattern_to_draw = self.current_background_image_pattern
+        
+        if pattern_to_draw is None: # Fallback if no pattern is available
+            # Create a temporary black surface if no background could be loaded/determined
+            pattern_to_draw = pygame.Surface((base_map_pixel_width, self.current_map_pixel_height))
+            pattern_to_draw.fill(BLACK)
+
+
         # Desenhar a imagem de fundo repetida
         for i in range(repeat_x):
             try:
                 self.screen.blit(
-                    self.current_background_image_pattern, 
+                    pattern_to_draw, 
                     (i * base_map_pixel_width + self.camera.camera_rect.x, self.camera.camera_rect.y)
                 )
             except pygame.error as e:
@@ -309,6 +354,13 @@ class Game:
                 dy = self.player.player_speed
                 self.player.current_direction = "frente"
             
+            # Background animation update
+            if self.background_animation_frames_surfaces and len(self.background_animation_frames_surfaces) > 1:
+                self.background_animation_timer += 1
+                if self.background_animation_timer >= self.background_animation_speed:
+                    self.background_animation_timer = 0
+                    self.current_background_animation_frame_index = (self.current_background_animation_frame_index + 1) % len(self.background_animation_frames_surfaces)
+
             if not any_key_pressed: pass 
             elif dx != 0 and dy != 0: pass 
             elif dx == 0 and dy == 0: pass
