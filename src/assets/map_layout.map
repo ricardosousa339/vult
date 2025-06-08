@@ -1,3 +1,20 @@
-g0 g90 g0 s s
-g270 s s s g180
-g0 g180 s g0 g0
+x x x x x x x x x
+x x x x x x x x x
+x x x x x x x x x
+x x x x x x x x x
+x x x x x x x x x
+x x x x x x x x x
+x x x x x x x x x
+x x x x x x x x x
+x x x x x x x x x
+x x x x x x x x x
+x x x x x x x x x
+x x x x x x x x x
+x x x x x x x x x x x x x x x x x x x
+x x x x x x x x g90 s s g270 x x x x x
+x x x x x x x x g90 s s g270 x x x x x
+x x x x x x x x g90 s s g270 x x x x x
+x x x x x x x x g90 s s g270 x x x x x
+x x x x x x x x g90 s s g270 x x x x x
+x x x x x x x x g90 s s g270 x x x x x
+x x x x x x x x g90 s s g270 x x x x x

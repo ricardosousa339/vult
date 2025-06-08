@@ -53,6 +53,18 @@ class Character:
         self.map_sprite_height = 81
         self.player_speed = 4
 
+        # Collision hitbox properties (feet area)
+        self.collision_box_width_ratio = 0.7  # 70% of sprite width
+        self.collision_box_height_ratio = 0.3 # 30% of sprite height (feet)
+
+        self.collision_box_width = int(self.map_sprite_width * self.collision_box_width_ratio)
+        self.collision_box_height = int(self.map_sprite_height * self.collision_box_height_ratio)
+        
+        # Offset to center the collision box horizontally and place it at the bottom
+        self.collision_box_offset_x = (self.map_sprite_width - self.collision_box_width) // 2
+        self.collision_box_offset_y = self.map_sprite_height - self.collision_box_height
+
+
     def update_animation(self):
         active_frames = self.directional_frames.get(self.current_direction, self.directional_frames.get("frente", []))
 
@@ -72,36 +84,59 @@ class Character:
             self.current_frame_index = (self.current_frame_index + 1) % len(active_frames)
 
     def move(self, dx, dy, map_width, map_height, collision_rects=None):
-        # Store current position before attempting X movement
-        current_x = self.map_x
-        self.map_x += dx
-        player_rect_x_check = pygame.Rect(self.map_x, self.map_y, self.map_sprite_width, self.map_sprite_height)
+        # Attempt X movement
+        potential_map_x = self.map_x + dx
+        # Define the collision rectangle for X movement check
+        player_collision_rect_x = pygame.Rect(
+            potential_map_x + self.collision_box_offset_x,
+            self.map_y + self.collision_box_offset_y,
+            self.collision_box_width,
+            self.collision_box_height
+        )
 
+        collided_x = False
         if collision_rects and dx != 0:
             for rect in collision_rects:
-                if player_rect_x_check.colliderect(rect):
-                    if dx > 0:  # Moving right, collided
-                        self.map_x = rect.left - self.map_sprite_width
-                    elif dx < 0:  # Moving left, collided
-                        self.map_x = rect.right
-                    break  # Stop checking other rects for this X movement
+                if player_collision_rect_x.colliderect(rect):
+                    if dx > 0:  # Moving right
+                        # Adjust map_x so collision_box right edge touches rect left edge
+                        self.map_x = rect.left - self.collision_box_width - self.collision_box_offset_x
+                    elif dx < 0:  # Moving left
+                        # Adjust map_x so collision_box left edge touches rect right edge
+                        self.map_x = rect.right - self.collision_box_offset_x
+                    collided_x = True
+                    break
         
-        # Store current position before attempting Y movement (X might have been adjusted)
-        current_y = self.map_y
-        self.map_y += dy
-        # Update player_rect with new Y position and potentially adjusted X position
-        player_rect_y_check = pygame.Rect(self.map_x, self.map_y, self.map_sprite_width, self.map_sprite_height)
+        if not collided_x:
+            self.map_x = potential_map_x
 
+        # Attempt Y movement
+        potential_map_y = self.map_y + dy
+        # Define the collision rectangle for Y movement check (using potentially updated self.map_x)
+        player_collision_rect_y = pygame.Rect(
+            self.map_x + self.collision_box_offset_x,
+            potential_map_y + self.collision_box_offset_y,
+            self.collision_box_width,
+            self.collision_box_height
+        )
+
+        collided_y = False
         if collision_rects and dy != 0:
             for rect in collision_rects:
-                if player_rect_y_check.colliderect(rect):
-                    if dy > 0:  # Moving down, collided
-                        self.map_y = rect.top - self.map_sprite_height
-                    elif dy < 0:  # Moving up, collided
-                        self.map_y = rect.bottom
-                    break  # Stop checking other rects for this Y movement
+                if player_collision_rect_y.colliderect(rect):
+                    if dy > 0:  # Moving down
+                        # Adjust map_y so collision_box bottom edge touches rect top edge
+                        self.map_y = rect.top - self.collision_box_height - self.collision_box_offset_y
+                    elif dy < 0:  # Moving up
+                        # Adjust map_y so collision_box top edge touches rect bottom edge
+                        self.map_y = rect.bottom - self.collision_box_offset_y
+                    collided_y = True
+                    break
+        
+        if not collided_y:
+            self.map_y = potential_map_y
 
-        # Boundary checks for map limits
+        # Boundary checks for map limits (based on the full sprite)
         self.map_x = max(0, min(self.map_x, map_width - self.map_sprite_width))
         self.map_y = max(0, min(self.map_y, map_height - self.map_sprite_height))
 
