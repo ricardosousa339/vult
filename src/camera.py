@@ -17,9 +17,9 @@ class Camera:
     def update(self, target): # target is a Character object
         # Centraliza a câmera no alvo (target.map_x, target.map_y são o canto superior esquerdo do sprite do alvo)
         # Para centralizar o *centro* do alvo, ajustamos por metade do tamanho do alvo e metade do tamanho da câmera.
-        # Assumes target has map_x, map_y, and map_sprite_size attributes
-        x = -target.map_x + self.width // 2 - target.map_sprite_size // 2
-        y = -target.map_y + self.height // 2 - target.map_sprite_size // 2
+        # Assumes target has map_x, map_y, map_sprite_width, and map_sprite_height attributes
+        x = -target.map_x + self.width // 2 - target.map_sprite_width // 2
+        y = -target.map_y + self.height // 2 - target.map_sprite_height // 2
 
         # Limita o scroll aos limites do mapa
         x = min(0, x)  # Não deixa a câmera ir para a esquerda do início do mapa (0)

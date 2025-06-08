@@ -22,9 +22,20 @@ class Game:
         # Passa WIDTH e HEIGHT para DialogueSystem
         self.dialogue_system = DialogueSystem(self.screen, self.font, WIDTH, HEIGHT)
         
-        player_sprite_path = os.path.join("src", "assets", "sprite_knight_frente.png")
-        # Usar um caminho diferente ou o mesmo placeholder para NPCs
-        npc_sprite_path = os.path.join("src", "assets", "sprite_knight_frente.png") 
+        # Define sprite paths for the player
+        player_sprite_paths = {
+            "frente": os.path.join("src", "assets", "sprite_knight_frente.png"),
+            "costas": os.path.join("src", "assets", "sprite_knight_costas.png"),
+            "esquerda": os.path.join("src", "assets", "sprite_knight_esquerda.png"),
+            "direita": os.path.join("src", "assets", "sprite_knight_direita.png"),
+            # Add attack and defense sprites if needed for other actions
+            # "ataque": os.path.join("src", "assets", "sprite_knight_ataque.png"),
+            # "defesa": os.path.join("src", "assets", "sprite_knight_defesa.png"),
+        }
+        # For NPCs, you can use a simpler setup or a similar directional one
+        npc_sprite_paths = {
+            "frente": os.path.join("src", "assets", "sprite_knight_frente.png") # Default for NPCs
+        }
 
         # Player starting position: Horizontally centered, bottom of the map
         player_start_x = MAP_WIDTH // 2
@@ -37,13 +48,13 @@ class Game:
         # For simplicity now, let's use a direct calculation, assuming player object is available or its size is known.
         # We will define player_start_y after player object is created to use its map_sprite_size.
 
-        self.player = Character("Cavaleiro", BLUE, map_x=player_start_x, map_y=0, sprite_path=player_sprite_path) # Placeholder map_y
-        player_start_y = MAP_HEIGHT - self.player.map_sprite_size 
+        self.player = Character("Cavaleiro", BLUE, map_x=player_start_x, map_y=0, sprite_paths=player_sprite_paths) # Pass sprite_paths
+        player_start_y = MAP_HEIGHT - self.player.map_sprite_height # Use map_sprite_height
         self.player.map_y = player_start_y # Set the correct map_y
 
         self.npcs = {
-            "blacksmith": Character("Ferreiro", (100,100,100), map_x=100, map_y=100, sprite_path=npc_sprite_path),
-            "merchant": Character("Mercador", (0,100,0), map_x=MAP_WIDTH - 150, map_y=MAP_HEIGHT -150, sprite_path=npc_sprite_path)
+            "blacksmith": Character("Ferreiro", (100,100,100), map_x=100, map_y=100, sprite_paths=npc_sprite_paths),
+            "merchant": Character("Mercador", (0,100,0), map_x=MAP_WIDTH - 150, map_y=MAP_HEIGHT -150, sprite_paths=npc_sprite_paths)
         }
         self.characters = {"protagonist": self.player}
         self.characters.update(self.npcs)
@@ -181,26 +192,52 @@ class Game:
                                keys[pygame.K_DOWN] or keys[pygame.K_s])
             self.player.is_moving = any_key_pressed
 
-            if keys[pygame.K_LEFT] or keys[pygame.K_a]: dx = -self.player.player_speed
-            if keys[pygame.K_RIGHT] or keys[pygame.K_d]: dx = self.player.player_speed
-            if keys[pygame.K_UP] or keys[pygame.K_w]: dy = -self.player.player_speed
-            if keys[pygame.K_DOWN] or keys[pygame.K_s]: dy = self.player.player_speed
+            if keys[pygame.K_LEFT] or keys[pygame.K_a]: 
+                dx = -self.player.player_speed
+                self.player.current_direction = "esquerda"
+            if keys[pygame.K_RIGHT] or keys[pygame.K_d]: 
+                dx = self.player.player_speed
+                self.player.current_direction = "direita"
+            if keys[pygame.K_UP] or keys[pygame.K_w]: 
+                dy = -self.player.player_speed
+                self.player.current_direction = "costas"
+            if keys[pygame.K_DOWN] or keys[pygame.K_s]: 
+                dy = self.player.player_speed
+                self.player.current_direction = "frente"
             
+            # More nuanced direction handling for diagonal or last direction if no new input
+            if not any_key_pressed: # If no movement key is pressed, keep last direction for animation
+                pass # self.player.current_direction remains as it was
+            elif dx != 0 and dy != 0: # Diagonal movement, prioritize horizontal or last set
+                # This simple example prioritizes the last key pressed for direction if multiple are held.
+                # For more complex diagonal sprites, you'd need specific diagonal assets and logic.
+                pass # Direction is already set by individual key checks
+            elif dx == 0 and dy == 0: # No new movement, but a key might have been released
+                 # Keep current direction if was moving, or default to frente if just stopped
+                pass # Covered by not any_key_pressed or individual key logic
+
             if dx != 0 or dy != 0: self.player.move(dx, dy, MAP_WIDTH, MAP_HEIGHT, self.collision_map_rects)
             self.player.update_animation()
             
             for npc in self.npcs.values():
-                if npc.is_animated and len(npc.frames) > 1: npc.is_moving = True
-                else: npc.is_moving = False
+                # NPCs can also have directions, but for now, they face "frente" and animate if set
+                if npc.directional_frames.get("frente"): # Check if NPC has 'frente' frames
+                    npc.current_direction = "frente"
+                    if len(npc.directional_frames["frente"]) > 1: # If NPC has animation frames
+                        npc.is_moving = True # Make NPCs animate if they have multiple frames
+                    else:
+                        npc.is_moving = False
+                else: # No 'frente' frames, maybe a static sprite or error
+                    npc.is_moving = False
                 npc.update_animation()
             self.camera.update(self.player)
 
-            player_rect = pygame.Rect(self.player.map_x, self.player.map_y, self.player.map_sprite_size, self.player.map_sprite_size)
+            player_rect = pygame.Rect(self.player.map_x, self.player.map_y, self.player.map_sprite_width, self.player.map_sprite_height)
             
             # Check for NPC collision only if dialogue_exit_active is False
             if not self.dialogue_exit_active:
                 for npc_name, npc in self.npcs.items():
-                    npc_rect = pygame.Rect(npc.map_x, npc.map_y, npc.map_sprite_size, npc.map_sprite_size)
+                    npc_rect = pygame.Rect(npc.map_x, npc.map_y, npc.map_sprite_width, npc.map_sprite_height)
                     if player_rect.colliderect(npc_rect) and npc.story:
                         self.game_state = "dialogue"
                         self.current_dialogue_story = npc.story
@@ -212,24 +249,31 @@ class Game:
                                 self.dialogue_system.set_dialogue(character_in_dialogue, scene["text"])
                         break # Interage com um NPC de cada vez
             # If player is not colliding with any NPC, reset the flag
-            elif not any(player_rect.colliderect(pygame.Rect(npc.map_x, npc.map_y, npc.map_sprite_size, npc.map_sprite_size)) for npc in self.npcs.values()):
+            elif not any(player_rect.colliderect(pygame.Rect(npc.map_x, npc.map_y, npc.map_sprite_width, npc.map_sprite_height)) for npc in self.npcs.values()):
                 self.dialogue_exit_active = False
 
         elif self.game_state == "dialogue":
             # Lógica de animação para personagem em diálogo
-            if self.dialogue_system.current_character and self.dialogue_system.current_character.is_animated:
-                self.dialogue_system.current_character.is_moving = True # Força animação durante diálogo
-                self.dialogue_system.current_character.update_animation()
+            current_char_in_dialogue = self.dialogue_system.current_character
+            if current_char_in_dialogue:
+                # Check if the character has 'frente' frames and more than one frame for animation
+                frente_frames = current_char_in_dialogue.directional_frames.get("frente", [])
+                if len(frente_frames) > 1:
+                    current_char_in_dialogue.is_moving = True # Força animação durante diálogo
+                    current_char_in_dialogue.update_animation()
+                else:
+                    current_char_in_dialogue.is_moving = False # No animation if single frame or no 'frente' frames
+                    current_char_in_dialogue.update_animation() # Still call to reset frame index if needed
 
     def draw(self):
         self.screen.fill(BLACK)
         self.draw_background(self.current_background)
 
         if self.game_state == "map":
-            player_map_pos_rect = pygame.Rect(self.player.map_x, self.player.map_y, self.player.map_sprite_size, self.player.map_sprite_size)
+            player_map_pos_rect = pygame.Rect(self.player.map_x, self.player.map_y, self.player.map_sprite_width, self.player.map_sprite_height)
             self.player.draw_on_map(self.screen, self.camera.apply_to_rect(player_map_pos_rect).topleft)
             for npc in self.npcs.values():
-                npc_map_pos_rect = pygame.Rect(npc.map_x, npc.map_y, npc.map_sprite_size, npc.map_sprite_size)
+                npc_map_pos_rect = pygame.Rect(npc.map_x, npc.map_y, npc.map_sprite_width, npc.map_sprite_height)
                 npc.draw_on_map(self.screen, self.camera.apply_to_rect(npc_map_pos_rect).topleft)
             instruction_text = "WASD/Setas: Mover | ESC: Sair | Aproxime-se para interagir"
             self.screen.blit(self.font.render(instruction_text, True, WHITE), (10, 10))
@@ -238,8 +282,16 @@ class Game:
             # Desenha personagem em diálogo e caixa de diálogo
             if self.current_dialogue_story and self.dialogue_system.current_character:
                 char_in_dialogue = self.dialogue_system.current_character
-                if char_in_dialogue.frames:
-                    frame_to_draw = char_in_dialogue.frames[char_in_dialogue.current_frame_index]
+                # Use 'frente' frames for dialogue, or fallback to any available frames
+                dialogue_frames = char_in_dialogue.directional_frames.get("frente", list(char_in_dialogue.directional_frames.values())[0] if char_in_dialogue.directional_frames else [])
+
+                if dialogue_frames:
+                    # Ensure current_frame_index is valid for dialogue_frames
+                    if char_in_dialogue.current_frame_index >= len(dialogue_frames):
+                        char_in_dialogue.current_frame_index = 0
+
+                    frame_to_draw = dialogue_frames[char_in_dialogue.current_frame_index]
+                    # Use the character's dialogue_sprite_original_width/height for consistent dialogue sprite sizing
                     sprite_x = WIDTH // 2 - char_in_dialogue.dialogue_sprite_original_width // 2
                     sprite_y = HEIGHT // 2 - char_in_dialogue.dialogue_sprite_original_height // 2 - 50
                     self.screen.blit(frame_to_draw, (sprite_x, sprite_y))
