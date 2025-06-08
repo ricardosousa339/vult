@@ -112,6 +112,13 @@ class Game:
         self.background_animation_timer = 0
         self.background_animation_speed = 15 # Adjust for desired animation speed (e.g., 15 ticks per frame)
 
+        # Portal activation and background override attributes
+        self.portal_is_activating = False
+        self.portal_activation_delay = FPS * 1  # 1-second delay (FPS is from config)
+        self.portal_activation_timer = 0
+        self.portal_target_info = None 
+        self.raw_portal_open_image = None # Will hold the unscaled porta_aberta.png
+        self.scaled_portal_open_background_override = None # porta_aberta.png scaled to current map pattern size
 
         self.tiles = {
             "g0": pygame.image.load(os.path.join("src", "assets", "grama_tile_0.png")).convert_alpha(),
@@ -122,6 +129,17 @@ class Game:
             "p": pygame.Surface((self.tile_size, self.tile_size), pygame.SRCALPHA)
         }
         self.tiles["p"].fill((0,0,0,0))
+
+        # Load the raw portal open image (unscaled)
+        try:
+            portal_open_image_path = os.path.join("src", "assets", "porta_aberta.png")
+            self.raw_portal_open_image = pygame.image.load(portal_open_image_path).convert_alpha()
+        except pygame.error as e:
+            print(f"Error loading raw portal open image {portal_open_image_path}: {e}.")
+            self.raw_portal_open_image = None 
+        except FileNotFoundError:
+            print(f"Raw portal open image file not found at {portal_open_image_path}.")
+            self.raw_portal_open_image = None
 
         for key in self.tiles:
             self.tiles[key] = pygame.transform.scale(self.tiles[key], (self.tile_size, self.tile_size))
@@ -237,16 +255,17 @@ class Game:
         repeat_x = self.current_map_info.get("repeat_x", 1)
 
         pattern_to_draw = None
-        if self.background_animation_frames_surfaces:
+
+        if self.portal_is_activating and self.scaled_portal_open_background_override:
+            pattern_to_draw = self.scaled_portal_open_background_override
+        elif self.background_animation_frames_surfaces:
             pattern_to_draw = self.background_animation_frames_surfaces[self.current_background_animation_frame_index]
         elif hasattr(self, 'current_background_image_pattern') and self.current_background_image_pattern:
             pattern_to_draw = self.current_background_image_pattern
         
         if pattern_to_draw is None: # Fallback if no pattern is available
-            # Create a temporary black surface if no background could be loaded/determined
             pattern_to_draw = pygame.Surface((base_map_pixel_width, self.current_map_pixel_height))
             pattern_to_draw.fill(BLACK)
-
 
         # Desenhar a imagem de fundo repetida
         for i in range(repeat_x):
@@ -288,7 +307,12 @@ class Game:
                 if 0 <= col_in_pattern < len(row_data): # Verifica se col_in_pattern é válido para row_data
                     tile_key = row_data[col_in_pattern]
                     tile_image = self.tiles.get(tile_key)
-                    if tile_image:
+                    
+                    # tile_image_to_draw = tile_image # Default to the static tile image
+                    # Removed specific logic for changing 'p' tile appearance during portal activation
+                    # The background itself is now changed via scaled_portal_open_background_override
+                    
+                    if tile_image: # Was tile_image_to_draw
                         # Posição X do tile no mapa grande/repetido
                         x = col_on_large_map * self.tile_size + self.camera.camera_rect.x
                         y = row_index * self.tile_size + self.camera.camera_rect.y
@@ -296,7 +320,7 @@ class Game:
                         tile_rect_on_screen = pygame.Rect(x, y, self.tile_size, self.tile_size)
                         # Verifica se o tile está realmente na tela antes de desenhar (dupla checagem, mas útil)
                         if self.screen.get_rect().colliderect(tile_rect_on_screen):
-                             self.screen.blit(tile_image, (x, y))
+                             self.screen.blit(tile_image, (x, y)) # Was tile_image_to_draw
 
     def events(self):
         for event in pygame.event.get():
@@ -331,6 +355,18 @@ class Game:
                         self.running = False
 
     def update(self):
+        if self.portal_is_activating:
+            self.portal_activation_timer -= 1
+            
+            if self.portal_activation_timer <= 0:
+                if self.portal_target_info:
+                    self.switch_map(self.portal_target_info["target_map_key"], self.portal_target_info["target_player_pos"])
+                # Reset portal state
+                self.portal_is_activating = False
+                self.portal_target_info = None
+                self.scaled_portal_open_background_override = None # Clear the override
+            return # Skip other updates (like player movement) during portal activation
+
         if self.game_state == "map":
             keys = pygame.key.get_pressed()
             dx, dy = 0, 0
@@ -391,10 +427,24 @@ class Game:
                0 <= tile_col_in_pattern < (len(self.map_data[tile_row]) if self.map_data and tile_row < len(self.map_data) else 0) :
                 current_tile_key = self.map_data[tile_row][tile_col_in_pattern]
                 if current_tile_key == 'p':
-                    # A chave do portal em self.current_map_info[\"portals\"] deve ser a coordenada no padrão
+                    # A chave do portal em self.current_map_info[\\\"portals\\\"] deve ser a coordenada no padrão
                     if current_tile_coords_in_pattern in self.current_map_info.get("portals", {}):
                         portal_data = self.current_map_info["portals"][current_tile_coords_in_pattern]
-                        self.switch_map(portal_data["target_map_key"], portal_data["target_player_pos"])
+                        
+                        if self.raw_portal_open_image: # Check if the base image was loaded
+                            current_map_pattern_width = self.current_map_info["pixel_width"]
+                            current_map_pattern_height = self.current_map_info["pixel_height"]
+                            self.scaled_portal_open_background_override = pygame.transform.scale(
+                                self.raw_portal_open_image, 
+                                (current_map_pattern_width, current_map_pattern_height)
+                            )
+                        else: # Fallback if raw_portal_open_image failed to load
+                            self.scaled_portal_open_background_override = None
+
+                        self.portal_is_activating = True
+                        self.portal_activation_timer = self.portal_activation_delay
+                        self.portal_target_info = portal_data
+                        # self.portal_tile_animating_coords removed
                         return 
             
             for npc in self.npcs.values():
