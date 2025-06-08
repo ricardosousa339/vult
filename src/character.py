@@ -56,18 +56,29 @@ class Character:
             self.animation_timer = 0
             self.current_frame_index = (self.current_frame_index + 1) % len(self.frames)
 
-    def move(self, dx, dy, map_boundary_width, map_boundary_height):
-        new_x = self.map_x + dx
-        new_y = self.map_y + dy
-        if 0 <= new_x <= map_boundary_width - self.map_sprite_size:
-            self.map_x = new_x
-        if 0 <= new_y <= map_boundary_height - self.map_sprite_size:
-            self.map_y = new_y
+    def move(self, dx, dy, map_width, map_height, collision_rects=None):
+        new_map_x = self.map_x + dx
+        new_map_y = self.map_y + dy
 
-    def draw_on_map(self, screen, map_pos_on_screen):
+        # Create a potential new rect for collision detection
+        potential_rect = pygame.Rect(new_map_x, new_map_y, self.map_sprite_size, self.map_sprite_size)
+
+        collided = False
+        if collision_rects:
+            for rect in collision_rects:
+                if potential_rect.colliderect(rect):
+                    collided = True
+                    break
+        
+        if not collided:
+            # Boundary checks for map limits
+            self.map_x = max(0, min(new_map_x, map_width - self.map_sprite_size))
+            self.map_y = max(0, min(new_map_y, map_height - self.map_sprite_size))
+
+    def draw_on_map(self, screen, position):
         if self.frames:
             current_frame_surface = self.frames[self.current_frame_index]
             scaled_sprite = pygame.transform.scale(current_frame_surface, (self.map_sprite_size, self.map_sprite_size))
-            screen.blit(scaled_sprite, map_pos_on_screen)
+            screen.blit(scaled_sprite, position)
         else:
-            pygame.draw.rect(screen, self.color, (map_pos_on_screen[0], map_pos_on_screen[1], self.map_sprite_size, self.map_sprite_size))
+            pygame.draw.rect(screen, self.color, (position[0], position[1], self.map_sprite_size, self.map_sprite_size))

@@ -2,256 +2,53 @@ import pygame
 import sys
 import os
 
-# Configurações
-WIDTH = 1024
-HEIGHT = 768
-FPS = 60
+from camera import Camera
+from character import Character # Assuming BLUE is defined in character.py or a config.py
+from dialogue_system import DialogueSystem # Assuming colors are in dialogue_system.py or config
+from story import Story
+from config import WIDTH, HEIGHT, FPS, MAP_WIDTH, MAP_HEIGHT, BLACK, BLUE, WHITE, DARK_GRAY
 
-MAP_WIDTH = WIDTH * 2  # O mapa é duas vezes mais largo que a tela
-MAP_HEIGHT = HEIGHT * 2 # O mapa é duas vezes mais alto que a tela
-
-# Cores
-BLACK = (0, 0, 0)
-WHITE = (255, 255, 255)
-GRAY = (128, 128, 128)
-DARK_GRAY = (64, 64, 64)
-BLUE = (100, 150, 255)
-
-class Camera:
-    def __init__(self, width, height, map_width, map_height):
-        self.camera_rect = pygame.Rect(0, 0, width, height)
-        self.width = width
-        self.height = height
-        self.map_width = map_width
-        self.map_height = map_height
-
-    def apply_to_rect(self, rect): # rect is a pygame.Rect on the map
-        return rect.move(self.camera_rect.left, self.camera_rect.top)
-
-    def apply_to_surface(self, surface_rect): # surface_rect is a pygame.Rect for a surface to be blitted
-        return surface_rect.move(self.camera_rect.left, self.camera_rect.top)
-
-    def update(self, target): # target is a Character object
-        # Centraliza a câmera no alvo (target.map_x, target.map_y são o canto superior esquerdo do sprite do alvo)
-        # Para centralizar o *centro* do alvo, ajustamos por metade do tamanho do alvo e metade do tamanho da câmera.
-        x = -target.map_x + self.width // 2 - target.map_sprite_size // 2
-        y = -target.map_y + self.height // 2 - target.map_sprite_size // 2
-
-        # Limita o scroll aos limites do mapa
-        x = min(0, x)  # Não deixa a câmera ir para a esquerda do início do mapa (0)
-        y = min(0, y)  # Não deixa a câmera ir para cima do início do mapa (0)
-        x = max(-(self.map_width - self.width), x)  # Não deixa a câmera ir para a direita do fim do mapa
-        y = max(-(self.map_height - self.height), y) # Não deixa a câmera ir para baixo do fim do mapa
-        
-        self.camera_rect.topleft = (x, y)
-
-class Character:
-    def __init__(self, name, color=BLUE, map_x=0, map_y=0, sprite_path=None): # Added sprite_path
-        self.name = name
-        self.color = color
-        # self.sprite = None # Sprite individual não é mais o primário, usamos self.frames
-        self.dialogue_sprite_original_width = 150 # Default if no sprite
-        self.dialogue_sprite_original_height = 200 # Default if no sprite
-
-        self.frames = []
-        self.is_animated = False
-        self.current_frame_index = 0
-        self.animation_speed = 15 # Ticks do jogo por frame da animação (60 FPS / 15 = 4 FPS de animação)
-        self.animation_timer = 0
-        self.is_moving = False # Novo atributo para controlar o estado de movimento
-
-        if sprite_path:
-            try:
-                full_sprite_image = pygame.image.load(sprite_path).convert_alpha()
-                
-                spritesheet_width = full_sprite_image.get_width()
-                spritesheet_height = full_sprite_image.get_height()
-                
-                # Assumindo dois frames lado a lado para animação
-                frame_width = spritesheet_width // 2
-                frame_height = spritesheet_height
-
-                # Verifica se a imagem é larga o suficiente para conter dois frames
-                if frame_width > 0 and spritesheet_width >= frame_width * 2: 
-                    self.frames.append(full_sprite_image.subsurface(pygame.Rect(0, 0, frame_width, frame_height)))
-                    self.frames.append(full_sprite_image.subsurface(pygame.Rect(frame_width, 0, frame_width, frame_height)))
-                    self.is_animated = True
-                    self.dialogue_sprite_original_width = frame_width # Largura de um único frame
-                    self.dialogue_sprite_original_height = frame_height # Altura de um único frame
-                else: # Trata como um sprite de frame único
-                    self.frames.append(full_sprite_image)
-                    # self.is_animated continua False
-                    self.dialogue_sprite_original_width = spritesheet_width
-                    self.dialogue_sprite_original_height = spritesheet_height
-            except pygame.error as e:
-                print(f"Cannot load sprite for {self.name} at {sprite_path}: {e}")
-                # self.frames continua vazio, dimensões padrão serão usadas
-
-        self.story = None # For NPC-specific dialogues
-        self.map_x = map_x # Position on the map
-        self.map_y = map_y # Position on the map
-        self.map_sprite_size = 48 # Size of the character on the map (pixels)
-        self.player_speed = 4 # Movement speed for map
-
-    def update_animation(self):
-        if not self.is_animated or not self.frames or len(self.frames) <= 1:
-            return # Não animar se não for animado ou tiver só um frame
-
-        if not self.is_moving: # Se não estiver se movendo
-            self.current_frame_index = 0 # Volta para o primeiro frame (frame de "parado")
-            self.animation_timer = 0
-            return
-
-        self.animation_timer += 1
-        if self.animation_timer >= self.animation_speed:
-            self.animation_timer = 0
-            self.current_frame_index = (self.current_frame_index + 1) % len(self.frames)
-
-    def move(self, dx, dy, map_boundary_width, map_boundary_height):
-        # Basic boundary checking for map movement
-        new_x = self.map_x + dx
-        new_y = self.map_y + dy
-
-        if 0 <= new_x <= map_boundary_width - self.map_sprite_size:
-            self.map_x = new_x
-        if 0 <= new_y <= map_boundary_height - self.map_sprite_size:
-            self.map_y = new_y
-
-    def draw_on_map(self, screen, map_pos_on_screen):
-        """Draws a scaled-down version of the character for the map view at a specific screen position."""
-        if self.frames: # Verifica se existem frames carregados
-            current_frame_surface = self.frames[self.current_frame_index]
-            scaled_sprite = pygame.transform.scale(current_frame_surface, (self.map_sprite_size, self.map_sprite_size))
-            screen.blit(scaled_sprite, map_pos_on_screen)
-        else:
-            # Fallback para um retângulo colorido se não houver frames
-            pygame.draw.rect(screen, self.color, (map_pos_on_screen[0], map_pos_on_screen[1], self.map_sprite_size, self.map_sprite_size))
-
-class DialogueSystem:
-    def __init__(self, screen, font):
-        self.screen = screen
-        self.font = font
-        self.dialogue_box_height = 150
-        self.current_text = ""
-        self.current_character = None
-        
-    def draw_dialogue_box(self):
-        """Desenha a caixa de diálogo"""
-        box_rect = pygame.Rect(0, HEIGHT - self.dialogue_box_height, WIDTH, self.dialogue_box_height)
-        pygame.draw.rect(self.screen, DARK_GRAY, box_rect)
-        pygame.draw.rect(self.screen, WHITE, box_rect, 3)
-        
-        # Nome do personagem
-        if self.current_character:
-            name_surface = self.font.render(self.current_character.name, True, WHITE)
-            self.screen.blit(name_surface, (20, HEIGHT - self.dialogue_box_height + 10))
-        
-        # Texto do diálogo
-        if self.current_text:
-            text_y = HEIGHT - self.dialogue_box_height + 50
-            words = self.current_text.split()
-            lines = []
-            current_line = []
-            
-            for word in words:
-                test_line = ' '.join(current_line + [word])
-                if self.font.size(test_line)[0] < WIDTH - 40:
-                    current_line.append(word)
-                else:
-                    if current_line:
-                        lines.append(' '.join(current_line))
-                        current_line = [word]
-                    else:
-                        lines.append(word)
-            
-            if current_line:
-                lines.append(' '.join(current_line))
-            
-            for i, line in enumerate(lines[:3]):  # Máximo 3 linhas
-                text_surface = self.font.render(line, True, WHITE)
-                self.screen.blit(text_surface, (20, text_y + i * 25))
-    
-    def set_dialogue(self, character, text):
-        self.current_character = character
-        self.current_text = text
-
-class Story:
-    def __init__(self):
-        # Aqui você pode definir sua história
-        self.scenes = [
-            {
-                "background": "floresta_medieval", # Atualizado
-                "character": "protagonist",
-                "text": "Saudações! Eu sou um nobre cavaleiro. Bem-vindo ao meu reino!"
-            },
-            {
-                "background": "floresta_medieval", # Atualizado
-                "character": "protagonist",
-                "text": "Esta é uma simples balada. Pressione ESPAÇO para desbravar a narrativa."
-            },
-            {
-                "background": "floresta_medieval", # Atualizado
-                "character": "protagonist", 
-                "text": "Vós podeis substituir estes estandartes por vossas próprias tapeçarias mais tarde!"
-            },
-            {
-                "background": "floresta_medieval", # Atualizado
-                "character": "protagonist",
-                "text": "Aqui podeis adicionar contendas, escolhas e grandes feitos. O que desejais?"
-            },
-            # Exemplo de "puzzle" simples - pode expandir depois
-            {
-                "background": "floresta_medieval", # Atualizado
-                "character": "protagonist",
-                "text": "Fim da jornada por ora! Pressione ESC para retirar-se ou ESPAÇO para reiniciar a aventura."
-            }
-        ]
-        self.current_scene = 0
-    
-    def get_current_scene(self):
-        if self.current_scene < len(self.scenes):
-            return self.scenes[self.current_scene]
-        return None
-    
-    def next_scene(self):
-        self.current_scene += 1
-        if self.current_scene >= len(self.scenes):
-            self.current_scene = 0  # Recomeça
-    
-    def reset(self):
-        self.current_scene = 0
 
 class Game:
     def __init__(self):
         pygame.init()
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
-        pygame.display.set_caption("Visual Novel - Demo Medieval") # Atualizado
+        pygame.display.set_caption("Visual Novel - Demo Medieval")
         self.clock = pygame.time.Clock()
         self.running = True
-        self.game_state = "map" # Can be "map" or "dialogue"
+        self.game_state = "map"
         
-        # Font
-        self.font = pygame.font.Font(None, 24) # Considerar uma fonte mais temática depois
+        self.font = pygame.font.Font(None, 24)
+        # Passa WIDTH e HEIGHT para DialogueSystem
+        self.dialogue_system = DialogueSystem(self.screen, self.font, WIDTH, HEIGHT)
         
-        # Sistema de diálogo
-        self.dialogue_system = DialogueSystem(self.screen, self.font)
-        
-        # Personagens
-        # Make sure the sprite paths are correct relative to your execution directory
-        # or provide absolute paths.
         player_sprite_path = os.path.join("src", "assets", "sprite_knight_frente.png")
-        blacksmith_sprite_path = os.path.join("src", "assets", "sprite_knight_frente.png") # Placeholder, replace with actual NPC sprite
-        merchant_sprite_path = os.path.join("src", "assets", "sprite_knight_frente.png")   # Placeholder, replace with actual NPC sprite
+        # Usar um caminho diferente ou o mesmo placeholder para NPCs
+        npc_sprite_path = os.path.join("src", "assets", "sprite_knight_frente.png") 
 
-        self.player = Character("Cavaleiro", BLUE, map_x=WIDTH//2, map_y=HEIGHT//2, sprite_path=player_sprite_path)
+        # Player starting position: Horizontally centered, bottom of the map
+        player_start_x = MAP_WIDTH // 2
+        # Assuming self.player.map_sprite_size is the height of the player on the map
+        # We'll need to instantiate the player first to get this, or use a fixed value if known
+        # For now, let's assume a known/typical sprite size for initial y calculation, then refine if needed
+        # Or, better, calculate it based on player's actual map_sprite_size after instantiation.
+        # Let's instantiate with a placeholder Y and then adjust, or use a known value.
+        # player_start_y = MAP_HEIGHT - A_KNOWN_PLAYER_SPRITE_HEIGHT_ON_MAP 
+        # For simplicity now, let's use a direct calculation, assuming player object is available or its size is known.
+        # We will define player_start_y after player object is created to use its map_sprite_size.
+
+        self.player = Character("Cavaleiro", BLUE, map_x=player_start_x, map_y=0, sprite_path=player_sprite_path) # Placeholder map_y
+        player_start_y = MAP_HEIGHT - self.player.map_sprite_size 
+        self.player.map_y = player_start_y # Set the correct map_y
+
         self.npcs = {
-            "blacksmith": Character("Ferreiro", (100,100,100), map_x=100, map_y=100, sprite_path=blacksmith_sprite_path),
-            "merchant": Character("Mercador", (0,100,0), map_x=WIDTH - 150, map_y=HEIGHT -150, sprite_path=merchant_sprite_path)
+            "blacksmith": Character("Ferreiro", (100,100,100), map_x=100, map_y=100, sprite_path=npc_sprite_path),
+            "merchant": Character("Mercador", (0,100,0), map_x=MAP_WIDTH - 150, map_y=MAP_HEIGHT -150, sprite_path=npc_sprite_path)
         }
-        self.characters = {"protagonist": self.player} # For dialogue system compatibility
+        self.characters = {"protagonist": self.player}
         self.characters.update(self.npcs)
 
-        # NPC Stories (simple examples)
+        # Configuração das histórias dos NPCs
         blacksmith_story = Story()
         blacksmith_story.scenes = [
             {"background": "floresta_medieval", "character": "blacksmith", "text": "Olá, nobre cavaleiro! Precisa de uma espada afiada?"},
@@ -266,60 +63,80 @@ class Game:
         ]
         self.npcs["merchant"].story = merchant_story
         
-        # História principal (pode ser usada para quests ou introdução)
-        self.main_story = Story()
-        self.main_story.scenes = [
-             {
-                "background": "floresta_medieval", 
-                "character": "protagonist",
-                "text": "Vagueio por estas terras em busca de aventuras... e talvez um bom hidromel."
-            }
-        ]
-        self.current_dialogue_story = None # Will point to the story being used in dialogue mode
-        
-        # Background atual (placeholder)
-        self.current_background = "floresta_medieval" # Atualizado
-
-        # Câmera
+        self.current_dialogue_story = None
+        self.current_background = "floresta_medieval"
         self.camera = Camera(WIDTH, HEIGHT, MAP_WIDTH, MAP_HEIGHT)
+        self.dialogue_exit_active = False # Flag to manage dialogue re-triggering
+
+        # Load tiles
+        self.tile_size = 100 # Or your desired tile size
+        self.tiles = {
+            "g0": pygame.image.load(os.path.join("src", "assets", "grama_tile_0.png")).convert_alpha(),
+            "g90": pygame.image.load(os.path.join("src", "assets", "grama_tile_90.png")).convert_alpha(),
+            "g180": pygame.image.load(os.path.join("src", "assets", "grama_tile_180.png")).convert_alpha(),
+            "g270": pygame.image.load(os.path.join("src", "assets", "grama_tile_270.png")).convert_alpha(),
+            "s": pygame.image.load(os.path.join("src", "assets", "areia.png")).convert_alpha(),
+        }
+        # Scale tiles if necessary
+        for key in self.tiles:
+            self.tiles[key] = pygame.transform.scale(self.tiles[key], (self.tile_size, self.tile_size))
+
+        self.map_data = self.load_map_data(os.path.join("src", "assets", "map_layout.map"))
+        self.collision_map_rects = []
+        self.blocking_tile_keys = ['x', 'g0', 'g90', 'g180', 'g270'] # Define blocking tile keys including grass
+        self._create_collision_rects()
+
+    def _create_collision_rects(self):
+        self.collision_map_rects = []
+        for row_index, row_data in enumerate(self.map_data):
+            for col_index, tile_key in enumerate(row_data):
+                if tile_key in self.blocking_tile_keys: # Check if the tile_key is in the list of blocking keys
+                    rect = pygame.Rect(col_index * self.tile_size, 
+                                       row_index * self.tile_size, 
+                                       self.tile_size, 
+                                       self.tile_size)
+                    self.collision_map_rects.append(rect)
+
+    def load_map_data(self, map_file_path):
+        map_data = []
+        try:
+            with open(map_file_path, "r") as map_file:
+                for line in map_file.readlines():
+                    map_data.append(line.strip().split())
+        except FileNotFoundError:
+            print(f"Error: Map file not found at {map_file_path}")
+            # Create a default empty map or handle error as needed
+            # For now, let's assume a map that's 10x10 of '0' if file not found
+            num_cols = MAP_WIDTH // self.tile_size
+            num_rows = MAP_HEIGHT // self.tile_size
+            map_data = [['0' for _ in range(num_cols)] for _ in range(num_rows)]
+        return map_data
 
     def draw_background(self, background_name):
-        """Desenha o background - placeholder que pode ser substituído por imagens"""
-        # Cria uma superfície para o mapa inteiro
-        map_surface = pygame.Surface((MAP_WIDTH, MAP_HEIGHT))
+        # Load the map image
+        map_image_path = os.path.join("src", "assets", "map_image.png")
+        try:
+            map_image = pygame.image.load(map_image_path).convert()
+            map_image = pygame.transform.scale(map_image, (MAP_WIDTH, MAP_HEIGHT))
+            # Blit the map image as the background
+            self.screen.blit(map_image, (self.camera.camera_rect.x, self.camera.camera_rect.y))
+        except pygame.error as e:
+            print(f"Error loading base map image: {e}")
+            self.screen.fill(BLACK) # Fallback to black background
 
-        if background_name == "floresta_medieval": # Nome atualizado
-            # Céu (pode ser mais escuro ou nublado para um tom medieval)
-            pygame.draw.rect(map_surface, (100, 100, 120), (0, 0, MAP_WIDTH, MAP_HEIGHT//2)) # Céu acinzentado
-            # Chão (terra ou grama mais escura)
-            pygame.draw.rect(map_surface, (50, 80, 50), (0, MAP_HEIGHT//2, MAP_WIDTH, MAP_HEIGHT//2)) # Verde escuro/terra
-            
-            # Árvores (mais robustas e escuras) - desenhadas em toda a extensão do mapa
-            tree_trunk_color = (80, 50, 30) # Marrom escuro para troncos
-            tree_foliage_color = (30, 70, 30) # Verde bem escuro para folhagem
-            
-            for i in range(10): # Aumentar o número de árvores para preencher o mapa maior
-                x = i * (MAP_WIDTH // 10) + (MAP_WIDTH // 20) # Espaçamento ajustado para MAP_WIDTH
-                trunk_width = 30
-                trunk_height = HEIGHT//3 + 20 # Altura relativa à tela ainda pode fazer sentido
-                foliage_radius = 50
-                
-                # Tronco
-                pygame.draw.rect(map_surface, tree_trunk_color, (x - trunk_width//2, MAP_HEIGHT//2 - trunk_height + 50, trunk_width, trunk_height))
-                # Folhagem (copa mais densa)
-                pygame.draw.circle(map_surface, tree_foliage_color, (x, MAP_HEIGHT//2 - trunk_height + 50 - foliage_radius//2), foliage_radius)
-                pygame.draw.circle(map_surface, tree_foliage_color, (x - foliage_radius//3, MAP_HEIGHT//2 - trunk_height + 20 - foliage_radius//2), foliage_radius -10)
-                pygame.draw.circle(map_surface, tree_foliage_color, (x + foliage_radius//3, MAP_HEIGHT//2 - trunk_height + 20- foliage_radius//2), foliage_radius-10)
-
-            # Opcional: Silhueta de um castelo distante no mapa
-            castle_color = (70, 70, 70) # Cinza escuro para silhueta
-            pygame.draw.rect(map_surface, castle_color, (MAP_WIDTH - 400, MAP_HEIGHT//2 - 100, 60, 100)) # Torre 1
-            pygame.draw.rect(map_surface, castle_color, (MAP_WIDTH - 300, MAP_HEIGHT//2 - 120, 60, 120)) # Torre 2 (maior)
-            pygame.draw.rect(map_surface, castle_color, (MAP_WIDTH - 200, MAP_HEIGHT//2 - 100, 60, 100)) # Torre 3
-            pygame.draw.rect(map_surface, castle_color, (MAP_WIDTH - 400, MAP_HEIGHT//2 - 50, 200, 20)) # Muralha
-        
-        # Blit a porção visível do mapa na tela principal, deslocada pela câmera
-        self.screen.blit(map_surface, (self.camera.camera_rect.x, self.camera.camera_rect.y))
+        # Overlay tiles based on self.map_data
+        for row_index, row_data in enumerate(self.map_data):
+            for col_index, tile_key in enumerate(row_data):
+                tile_image = self.tiles.get(tile_key)
+                if tile_image:
+                    x = col_index * self.tile_size + self.camera.camera_rect.x
+                    y = row_index * self.tile_size + self.camera.camera_rect.y
+                    
+                    # Only draw if tile is on screen
+                    tile_rect = pygame.Rect(x, y, self.tile_size, self.tile_size)
+                    screen_rect = self.screen.get_rect()
+                    if tile_rect.colliderect(screen_rect):
+                         self.screen.blit(tile_image, (x, y))
 
     def events(self):
         for event in pygame.event.get():
@@ -331,129 +148,110 @@ class Game:
                         if self.current_dialogue_story:
                             self.current_dialogue_story.next_scene()
                             scene = self.current_dialogue_story.get_current_scene()
-                            if not scene: # End of NPC dialogue
+                            if scene is None: # Checa se get_current_scene retornou None
                                 self.game_state = "map"
-                                self.current_dialogue_story.reset() # Reset for next time
-                                self.current_dialogue_story = None
+                                self.current_dialogue_story = None # Limpa a história atual
+                                self.dialogue_system.current_character = None # Limpa o personagem no sistema de diálogo
+                                self.dialogue_system.current_text = "" # Limpa o texto no sistema de diálogo
+                                self.dialogue_exit_active = True # Activate flag
                             else:
-                                # Update dialogue system with the new scene from the current story
                                 character_in_dialogue = self.characters.get(scene["character"])
                                 if character_in_dialogue:
                                     self.dialogue_system.set_dialogue(character_in_dialogue, scene["text"])
                     elif event.key == pygame.K_ESCAPE:
                         self.game_state = "map"
                         if self.current_dialogue_story:
-                            self.current_dialogue_story.reset()
+                            # self.current_dialogue_story.reset() # Reset is handled when starting new dialogue
                             self.current_dialogue_story = None
+                        self.dialogue_system.current_character = None
+                        self.dialogue_system.current_text = ""
+                        self.dialogue_exit_active = True # Activate flag to prevent immediate re-trigger
                 elif self.game_state == "map":
                     if event.key == pygame.K_ESCAPE:
                         self.running = False
-                    # Player movement will be handled in update based on pressed keys
 
     def update(self):
         if self.game_state == "map":
             keys = pygame.key.get_pressed()
             dx, dy = 0, 0
             
-            # Define is_moving baseado nas teclas pressionadas
-            if keys[pygame.K_LEFT] or keys[pygame.K_a] or \
-               keys[pygame.K_RIGHT] or keys[pygame.K_d] or \
-               keys[pygame.K_UP] or keys[pygame.K_w] or \
-               keys[pygame.K_DOWN] or keys[pygame.K_s]:
-                self.player.is_moving = True
-            else:
-                self.player.is_moving = False
+            any_key_pressed = (keys[pygame.K_LEFT] or keys[pygame.K_a] or
+                               keys[pygame.K_RIGHT] or keys[pygame.K_d] or
+                               keys[pygame.K_UP] or keys[pygame.K_w] or
+                               keys[pygame.K_DOWN] or keys[pygame.K_s])
+            self.player.is_moving = any_key_pressed
 
-            if keys[pygame.K_LEFT] or keys[pygame.K_a]:
-                dx = -self.player.player_speed
-            if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
-                dx = self.player.player_speed
-            if keys[pygame.K_UP] or keys[pygame.K_w]:
-                dy = -self.player.player_speed
-            if keys[pygame.K_DOWN] or keys[pygame.K_s]:
-                dy = self.player.player_speed
+            if keys[pygame.K_LEFT] or keys[pygame.K_a]: dx = -self.player.player_speed
+            if keys[pygame.K_RIGHT] or keys[pygame.K_d]: dx = self.player.player_speed
+            if keys[pygame.K_UP] or keys[pygame.K_w]: dy = -self.player.player_speed
+            if keys[pygame.K_DOWN] or keys[pygame.K_s]: dy = self.player.player_speed
             
-            if dx != 0 or dy != 0:
-                self.player.move(dx, dy, MAP_WIDTH, MAP_HEIGHT)
-            # else: # Se não houve movimento, garante que is_moving seja False
-            #    self.player.is_moving = False # Esta linha é redundante devido à lógica acima
-
-            self.player.update_animation() # Atualiza animação do jogador
+            if dx != 0 or dy != 0: self.player.move(dx, dy, MAP_WIDTH, MAP_HEIGHT, self.collision_map_rects)
+            self.player.update_animation()
             
-            # NPCs podem continuar animando independentemente por enquanto
-            # Se quiser que NPCs também só animem ao se mover, precisará de lógica similar para eles
             for npc in self.npcs.values():
-                # Para este exemplo, vamos fazer os NPCs animarem continuamente se tiverem animação
-                if npc.is_animated and len(npc.frames) > 1:
-                    npc.is_moving = True # Faz os NPCs com animação sempre animarem
-                else:
-                    npc.is_moving = False
-                npc.update_animation() 
+                if npc.is_animated and len(npc.frames) > 1: npc.is_moving = True
+                else: npc.is_moving = False
+                npc.update_animation()
+            self.camera.update(self.player)
 
-            self.camera.update(self.player) # Atualiza a câmera para seguir o jogador
-
-            # Check for NPC interaction
             player_rect = pygame.Rect(self.player.map_x, self.player.map_y, self.player.map_sprite_size, self.player.map_sprite_size)
-            for npc_name, npc in self.npcs.items():
-                npc_rect = pygame.Rect(npc.map_x, npc.map_y, npc.map_sprite_size, npc.map_sprite_size)
-                if player_rect.colliderect(npc_rect):
-                    if npc.story: # Check if NPC has a story to tell
+            
+            # Check for NPC collision only if dialogue_exit_active is False
+            if not self.dialogue_exit_active:
+                for npc_name, npc in self.npcs.items():
+                    npc_rect = pygame.Rect(npc.map_x, npc.map_y, npc.map_sprite_size, npc.map_sprite_size)
+                    if player_rect.colliderect(npc_rect) and npc.story:
                         self.game_state = "dialogue"
                         self.current_dialogue_story = npc.story
+                        self.current_dialogue_story.reset() # Reseta a história do NPC para começar do início
                         scene = self.current_dialogue_story.get_current_scene()
-                        if scene:
+                        if scene: # Deve haver uma cena após o reset
                             character_in_dialogue = self.characters.get(scene["character"])
                             if character_in_dialogue:
                                 self.dialogue_system.set_dialogue(character_in_dialogue, scene["text"])
-                        break # Interact with one NPC at a time
+                        break # Interage com um NPC de cada vez
+            # If player is not colliding with any NPC, reset the flag
+            elif not any(player_rect.colliderect(pygame.Rect(npc.map_x, npc.map_y, npc.map_sprite_size, npc.map_sprite_size)) for npc in self.npcs.values()):
+                self.dialogue_exit_active = False
 
         elif self.game_state == "dialogue":
-            # Dialogue progression is handled in events for SPACE key
-            pass # Potentially update animated character portraits or text effects here
+            # Lógica de animação para personagem em diálogo
+            if self.dialogue_system.current_character and self.dialogue_system.current_character.is_animated:
+                self.dialogue_system.current_character.is_moving = True # Força animação durante diálogo
+                self.dialogue_system.current_character.update_animation()
 
     def draw(self):
         self.screen.fill(BLACK)
         self.draw_background(self.current_background)
 
         if self.game_state == "map":
-            # Player e NPCs são desenhados em suas posições no mapa, a câmera cuida do offset
             player_map_pos_rect = pygame.Rect(self.player.map_x, self.player.map_y, self.player.map_sprite_size, self.player.map_sprite_size)
             self.player.draw_on_map(self.screen, self.camera.apply_to_rect(player_map_pos_rect).topleft)
-            
-            for npc_name, npc in self.npcs.items():
+            for npc in self.npcs.values():
                 npc_map_pos_rect = pygame.Rect(npc.map_x, npc.map_y, npc.map_sprite_size, npc.map_sprite_size)
                 npc.draw_on_map(self.screen, self.camera.apply_to_rect(npc_map_pos_rect).topleft)
-            
-            # Simple instruction for map mode
-            instruction_text = "WASD/Setas: Mover | ESC: Sair | Aproxime-se de NPCs para interagir"
-            instruction_surface = self.font.render(instruction_text, True, WHITE)
-            self.screen.blit(instruction_surface, (10, 10))
+            instruction_text = "WASD/Setas: Mover | ESC: Sair | Aproxime-se para interagir"
+            self.screen.blit(self.font.render(instruction_text, True, WHITE), (10, 10))
 
         elif self.game_state == "dialogue":
-            # Draw the full-size character for dialogue
-            scene = self.current_dialogue_story.get_current_scene()
-            if scene and scene["character"] in self.characters:
-                character_in_dialogue = self.characters[scene["character"]]
-                if character_in_dialogue.frames: # Verifica se há frames
-                    current_frame_surface = character_in_dialogue.frames[character_in_dialogue.current_frame_index]
-                    # Usa dialogue_sprite_original_width/height que agora refletem o tamanho de um frame
-                    sprite_x = WIDTH // 2 - character_in_dialogue.dialogue_sprite_original_width // 2
-                    sprite_y = HEIGHT // 2 - character_in_dialogue.dialogue_sprite_original_height // 2 - 50
-                    self.screen.blit(current_frame_surface, (sprite_x, sprite_y))
-                else:
-                    # Fallback para um retângulo colorido se não houver frames
-                    pygame.draw.rect(self.screen, character_in_dialogue.color, 
-                                     (WIDTH//2 - character_in_dialogue.dialogue_sprite_original_width//2, 
-                                      HEIGHT//2 - character_in_dialogue.dialogue_sprite_original_height//2 - 50, 
-                                      character_in_dialogue.dialogue_sprite_original_width, 
-                                      character_in_dialogue.dialogue_sprite_original_height))
-            
+            # Desenha personagem em diálogo e caixa de diálogo
+            if self.current_dialogue_story and self.dialogue_system.current_character:
+                char_in_dialogue = self.dialogue_system.current_character
+                if char_in_dialogue.frames:
+                    frame_to_draw = char_in_dialogue.frames[char_in_dialogue.current_frame_index]
+                    sprite_x = WIDTH // 2 - char_in_dialogue.dialogue_sprite_original_width // 2
+                    sprite_y = HEIGHT // 2 - char_in_dialogue.dialogue_sprite_original_height // 2 - 50
+                    self.screen.blit(frame_to_draw, (sprite_x, sprite_y))
+                else: # Fallback se não houver frames
+                    pygame.draw.rect(self.screen, char_in_dialogue.color, 
+                                     (WIDTH//2 - char_in_dialogue.dialogue_sprite_original_width//2, 
+                                      HEIGHT//2 - char_in_dialogue.dialogue_sprite_original_height//2 - 50, 
+                                      char_in_dialogue.dialogue_sprite_original_width, 
+                                      char_in_dialogue.dialogue_sprite_original_height))
             self.dialogue_system.draw_dialogue_box()
-            
-            # Instruções para diálogo
             instruction_text = "ESPAÇO: Próximo | ESC: Voltar ao Mapa"
-            instruction_surface = self.font.render(instruction_text, True, WHITE)
-            self.screen.blit(instruction_surface, (10, 10))
+            self.screen.blit(self.font.render(instruction_text, True, WHITE), (10, 10))
         
         pygame.display.flip()
 
@@ -464,7 +262,9 @@ class Game:
             self.draw()
             self.clock.tick(FPS)
 
-game = Game()
-game.run()
-pygame.quit()
-sys.exit()
+# Ponto de entrada principal
+if __name__ == '__main__':
+    game = Game()
+    game.run()
+    pygame.quit()
+    sys.exit()
