@@ -19,14 +19,26 @@ class Game:
         self.running = True
         self.game_state = "map"  # Initial state, can be "playing", "dialogue", "map"
         
-        self.font = pygame.font.Font(None, 24)
+        # Carregar a fonte pixelizada
+        try:
+            # Substitua 'pixel_font.ttf' pelo nome do seu arquivo de fonte e 36 pelo tamanho desejado
+            font_path = os.path.join("src", "assets", "depixel.ttf") # Caminho corrigido
+            pixel_font_size = 16 # Ajuste o tamanho conforme necessário
+            self.font = pygame.font.Font(font_path, pixel_font_size)
+        except pygame.error as e:
+            print(f"Erro ao carregar a fonte pixelizada: {e}. Usando fonte padrão.")
+            self.font = pygame.font.Font(None, 24) # Fallback para a fonte padrão
+        except FileNotFoundError:
+            print(f"Arquivo da fonte pixelizada não encontrado em {font_path}. Usando fonte padrão.")
+            self.font = pygame.font.Font(None, 24)
+
         self.dialogue_system = DialogueSystem(self.screen, self.font, WIDTH, HEIGHT)
         
         player_sprite_paths = {
-            "frente": os.path.join("src", "assets", "sprite_knight_frente.png"),
-            "costas": os.path.join("src", "assets", "sprite_knight_costas.png"),
-            "esquerda": os.path.join("src", "assets", "sprite_knight_esquerda.png"),
-            "direita": os.path.join("src", "assets", "sprite_knight_direita.png"),
+            "frente": {"path": os.path.join("src", "assets", "sprite_knight_frente.png"), "frames": 2},
+            "costas": {"path": os.path.join("src", "assets", "sprite_knight_costas.png"), "frames": 2},
+            "esquerda": {"path": os.path.join("src", "assets", "sprite_knight_esquerda.png"), "frames": 2},
+            "direita": {"path": os.path.join("src", "assets", "sprite_knight_direita.png"), "frames": 2},
         }
         # Player starting position will be relative to the first map's dimensions.
         self.player = Character("Cavaleiro", BLUE, map_x=0, map_y=0, sprite_paths=player_sprite_paths)
@@ -46,6 +58,13 @@ class Game:
             {"character": "blacksmith_mundo_principal", "text": "Olá, nobre cavaleiro! Precisa de uma espada afiada?"},
             {"character": "blacksmith_mundo_principal", "text": "Minhas forjas estão sempre quentes!"}
         ]
+        
+        guardiao_story = Story()
+        guardiao_story.scenes = [
+            {"character": "cave_guardian", "text": "Você não deveria estar aqui, forasteiro!"},
+            {"character": "cave_guardian", "text": "A caverna guarda segredos que não são para os olhos curiosos."}
+        ]
+        self.stories["guardian_story"] = guardiao_story
         self.stories["blacksmith_story_generic"] = blacksmith_story
 
         merchant_story = Story()
@@ -61,7 +80,7 @@ class Game:
 
         # Define NPC sprite paths that can be reused or defined per NPC in map_definitions
         self.default_npc_sprite_paths = {
-            "frente": os.path.join("src", "assets", "sprite_knight_frente.png") # Placeholder
+            "frente": {"path": os.path.join("src", "assets", "sprite_knight_frente.png"), "frames": 1} # Placeholder
         }
 
         self.map_definitions = {
@@ -80,16 +99,20 @@ class Game:
                 },
                 "npcs": [
                     {
-                        "id": "blacksmith_mundo_principal", # Unique ID for this NPC on this map
+                        "id": "blacksmith_mundo_principal",
                         "name": "Ferreiro",
-                        "sprite_paths": self.default_npc_sprite_paths, # Can be specific
-                        "map_x": 200, "map_y": 250, # Position on this map
-                        "story_key": "blacksmith_story_generic" # Refers to self.stories
+                        "sprite_paths": { # Example for blacksmith, assuming single frame sprites
+                            "frente": {"path": os.path.join("src", "assets", "sprite_knight_frente.png"), "frames": 1}
+                        }, 
+                        "map_x": 200, "map_y": 250, 
+                        "story_key": "blacksmith_story_generic"
                     },
                     {
                         "id": "merchant_mundo_principal",
                         "name": "Mercador",
-                        "sprite_paths": self.default_npc_sprite_paths,
+                        "sprite_paths": {
+                            "frente": {"path": os.path.join("src", "assets", "sprite_knight_frente.png"), "frames": 1} # Example
+                        },
                         "map_x": 1700, "map_y": 1700,
                         "story_key": "merchant_story_generic"
                     }
@@ -107,14 +130,13 @@ class Game:
                     (2, 1): {"target_map_key": "mundo_principal", "target_player_pos": (9 * self.tile_size + self.tile_size // 2, 13 * self.tile_size)},
                 },
                 "npcs": [
-                    # Example: Add a different NPC or a different instance for this map
-                    # {
-                    #     "id": "cave_guardian",
-                    #     "name": "Guardião da Caverna",
-                    #     "sprite_paths": {"frente": os.path.join("src", "assets", "guardian_sprite.png")},
-                    #     "map_x": 500, "map_y": 150,
-                    #     "story_key": "guardian_story" # Assuming guardian_story is in self.stories
-                    # }
+                     {
+                         "id": "cave_guardian",
+                         "name": "Guardião da Caverna",
+                         "sprite_paths": {"frente": {"path": os.path.join("src", "assets", "cavaleiro2_animado.png"), "frames": 2}},
+                         "map_x": 500, "map_y": 150,
+                         "story_key": "guardian_story"
+                     }
                 ]
             }
         }
@@ -446,9 +468,10 @@ class Game:
                 elif self.game_state == "map": # Assuming "map" is the state for free roaming
                     if event.key == pygame.K_e: # Example: 'E' to interact
                         # Check for NPC interaction
-                        player_interaction_rect = self.player.get_interaction_rect() # Assumes Character has such a method
+                        player_interaction_rect = self.player.get_interaction_rect()
                         for npc_id, npc_object in self.current_map_npcs.items():
-                            if npc_object.get_rect().colliderect(player_interaction_rect): # Assumes Character has get_rect()
+                            # Use interaction_rect for both player and NPC for consistent detection
+                            if player_interaction_rect.colliderect(npc_object.get_interaction_rect()):
                                 self._handle_dialogue_interaction(npc_object)
                                 break # Interact with the first NPC found
                     

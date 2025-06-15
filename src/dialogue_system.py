@@ -1,8 +1,10 @@
 import pygame
+import os # Adicionado para os.path.join
 
 # Cores (se forem usadas apenas pelo DialogueSystem, podem ficar aqui ou em um config.py)
 WHITE = (255, 255, 255)
 DARK_GRAY = (64, 64, 64)
+BLACK = (0, 0, 0)
 
 class DialogueSystem:
     def __init__(self, screen, font, screen_width, screen_height):
@@ -10,14 +12,45 @@ class DialogueSystem:
         self.font = font
         self.screen_width = screen_width
         self.screen_height = screen_height
-        self.dialogue_box_height = 150
+        self.dialogue_box_height = 150 # Pode ser ajustado pela altura da imagem
         self.current_text = ""
         self.current_character = None
-        
-    def draw(self): # Renomeado de draw_dialogue_box para draw
-        box_rect = pygame.Rect(0, self.screen_height - self.dialogue_box_height, self.screen_width, self.dialogue_box_height)
-        pygame.draw.rect(self.screen, DARK_GRAY, box_rect)
-        pygame.draw.rect(self.screen, WHITE, box_rect, 3)
+
+        # Carregar a imagem da caixa de diálogo pixelizada
+        try:
+            # Substitua 'dialogue_box_pixel.png' pelo nome real do seu arquivo
+            dialogue_box_path = os.path.join("src", "assets", "dialogue_box.png") 
+            self.dialogue_box_image_original = pygame.image.load(dialogue_box_path).convert_alpha()
+            # Redimensionar a caixa de diálogo para a largura da tela e altura desejada
+            # Você pode querer que a altura seja baseada na proporção da imagem original
+            aspect_ratio = self.dialogue_box_image_original.get_width() / self.dialogue_box_image_original.get_height()
+            scaled_width = self.screen_width
+            scaled_height = int(scaled_width / aspect_ratio) 
+            # Ou defina uma altura fixa e escale proporcionalmente:
+            # scaled_height = self.dialogue_box_height 
+            # scaled_width = int(scaled_height * aspect_ratio)
+            # self.screen_width - (self.screen_width - scaled_width) // 2 # para centralizar se não for full width
+
+            self.dialogue_box_image = pygame.transform.scale(self.dialogue_box_image_original, (scaled_width, scaled_height))
+            self.dialogue_box_height = self.dialogue_box_image.get_height() # Atualiza a altura com base na imagem
+            self.dialogue_box_rect = self.dialogue_box_image.get_rect(bottomleft=(0, self.screen_height))
+
+        except pygame.error as e:
+            print(f"Erro ao carregar a imagem da caixa de diálogo: {e}")
+            self.dialogue_box_image = None # Fallback para desenho retangular
+            self.dialogue_box_rect = pygame.Rect(0, self.screen_height - self.dialogue_box_height, self.screen_width, self.dialogue_box_height)
+        except FileNotFoundError:
+            print(f"Arquivo da caixa de diálogo não encontrado em {dialogue_box_path}")
+            self.dialogue_box_image = None
+            self.dialogue_box_rect = pygame.Rect(0, self.screen_height - self.dialogue_box_height, self.screen_width, self.dialogue_box_height)
+
+
+    def draw(self):
+        if self.dialogue_box_image:
+            self.screen.blit(self.dialogue_box_image, self.dialogue_box_rect.topleft)
+        else: # Fallback para o desenho antigo se a imagem não carregar
+            pygame.draw.rect(self.screen, DARK_GRAY, self.dialogue_box_rect)
+            pygame.draw.rect(self.screen, WHITE, self.dialogue_box_rect, 3)
 
         if self.current_character: 
             animated_frame = self.current_character.get_current_animated_frame()
@@ -67,28 +100,42 @@ class DialogueSystem:
                 self.screen.blit(scaled_sprite, (sprite_x, sprite_y))
         
         if self.current_text:
-            text_y = self.screen_height - self.dialogue_box_height + 50
-            words = self.current_text.split()
+            # Ajustar o posicionamento do texto para dentro da nova caixa de diálogo
+            # Esses valores (padding_x, padding_y_top) podem precisar de ajuste fino
+            # dependendo do design da sua dialogue_box_pixel.png
+            text_padding_x = 80  # Espaçamento das bordas laterais da caixa
+            text_padding_y_top = 100 # Espaçamento do topo da caixa de diálogo para a primeira linha
+
+            text_start_x = self.dialogue_box_rect.left + text_padding_x
+            text_start_y = self.dialogue_box_rect.top + text_padding_y_top
+            
+            available_text_width = self.dialogue_box_rect.width - (text_padding_x * 2)
+
+            words = self.current_text.split(' ') # Dividir por espaço para melhor controle
             lines = []
-            current_line = []
+            current_line = ""
             
             for word in words:
-                test_line = ' '.join(current_line + [word])
-                if self.font.size(test_line)[0] < self.screen_width - 40:
-                    current_line.append(word)
+                # Adiciona espaço antes da palavra, exceto se a linha estiver vazia
+                word_to_add = (" " if current_line else "") + word 
+                test_line = current_line + word_to_add
+                
+                if self.font.size(test_line)[0] <= available_text_width:
+                    current_line += word_to_add
                 else:
-                    if current_line:
-                        lines.append(' '.join(current_line))
-                        current_line = [word]
-                    else:
-                        lines.append(word)
+                    if current_line: # Se current_line não estiver vazia, adiciona à lista
+                        lines.append(current_line)
+                    current_line = word # Começa nova linha com a palavra atual
             
-            if current_line:
-                lines.append(' '.join(current_line))
+            if current_line: # Adiciona a última linha formada
+                lines.append(current_line)
             
-            for i, line in enumerate(lines[:3]):
-                text_surface = self.font.render(line, True, WHITE)
-                self.screen.blit(text_surface, (20, text_y + i * 25))
+            line_height = self.font.get_linesize() # Usa o espaçamento padrão da fonte
+            max_lines_to_display = 3 # Ou calcule com base na altura da caixa e line_height
+
+            for i, line in enumerate(lines[:max_lines_to_display]):
+                text_surface = self.font.render(line, True, BLACK) # True para antialiasing (pode desligar para pixel puro)
+                self.screen.blit(text_surface, (text_start_x, text_start_y + i * line_height))
     
     def set_dialogue(self, character, text):
         self.current_character = character

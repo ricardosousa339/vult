@@ -4,49 +4,52 @@ import pygame
 BLUE = (100, 150, 255) 
 
 class Character:
-    def __init__(self, name, color=BLUE, map_x=0, map_y=0, sprite_paths=None): # Changed sprite_path to sprite_paths
+    def __init__(self, name, color=BLUE, map_x=0, map_y=0, sprite_paths=None): 
         self.name = name
         self.color = color
-        # Default dialogue sprite size, can be overridden by \'frente\' sprite
         self.dialogue_sprite_original_width = 150 
         self.dialogue_sprite_original_height = 200
 
-        self.directional_frames = {} # Stores lists of frames for each direction
+        self.directional_frames = {} 
         self.current_frame_index = 0
-        self.animation_speed = 15 
+        self.animation_speed = 30 # Aumentado de 15 para 30 para diminuir a velocidade da animação
         self.animation_timer = 0
         self.is_moving = False
-        self.current_direction = "frente" # Default direction
-        self.is_in_dialogue = False # Added for dialogue animation
+        self.current_direction = "frente" 
+        self.is_in_dialogue = False 
 
         if sprite_paths:
-            for direction, path in sprite_paths.items():
+            for direction, sprite_info in sprite_paths.items():
+                path = sprite_info["path"]
+                num_frames = sprite_info.get("frames", 1) # Default to 1 frame if not specified
                 try:
                     full_sprite_image = pygame.image.load(path).convert_alpha()
                     spritesheet_width = full_sprite_image.get_width()
                     spritesheet_height = full_sprite_image.get_height()
-                    # Assuming 2 frames horizontally for animation if spritesheet is wide enough
-                    frame_width = spritesheet_width // 2 
+                    
+                    frame_width = spritesheet_width // num_frames 
                     frame_height = spritesheet_height
 
                     current_direction_frames = []
-                    if frame_width > 0 and spritesheet_width >= frame_width * 2: # Check if it's a 2-frame sheet
-                        current_direction_frames.append(full_sprite_image.subsurface(pygame.Rect(0, 0, frame_width, frame_height)))
-                        current_direction_frames.append(full_sprite_image.subsurface(pygame.Rect(frame_width, 0, frame_width, frame_height)))
-                    else: # Single frame sprite
-                        current_direction_frames.append(full_sprite_image)
+                    if frame_width > 0 and num_frames > 0:
+                        for i in range(num_frames):
+                            frame_rect = pygame.Rect(i * frame_width, 0, frame_width, frame_height)
+                            current_direction_frames.append(full_sprite_image.subsurface(frame_rect))
+                    else: # Should not happen if path and frames are correct
+                        current_direction_frames.append(full_sprite_image) # Fallback to full image
                     
                     self.directional_frames[direction] = current_direction_frames
                     
-                    # If this is the 'frente' sprite, set dialogue dimensions from its first frame
                     if direction == "frente" and current_direction_frames:
                         first_frame_frente = current_direction_frames[0]
+                        # Update dialogue sprite dimensions based on the actual first frame of 'frente'
+                        # This ensures dialogue sprite scaling is based on the single frame, not the whole sheet
                         self.dialogue_sprite_original_width = first_frame_frente.get_width()
                         self.dialogue_sprite_original_height = first_frame_frente.get_height()
 
                 except pygame.error as e:
                     print(f"Cannot load sprite for {self.name} direction {direction} at {path}: {e}")
-                    self.directional_frames[direction] = [] # Store empty list if loading fails
+                    self.directional_frames[direction] = [] 
         self.map_x = map_x
         self.map_y = map_y
         # New dimensions based on 28x34 aspect ratio, aiming for height ~102
