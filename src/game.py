@@ -17,7 +17,7 @@ class Game:
         pygame.display.set_caption("Vult Game")
         self.clock = pygame.time.Clock()
         self.running = True
-        self.game_state = "map"
+        self.game_state = "map"  # Initial state, can be "playing", "dialogue", "map"
         
         self.font = pygame.font.Font(None, 24)
         self.dialogue_system = DialogueSystem(self.screen, self.font, WIDTH, HEIGHT)
@@ -28,44 +28,47 @@ class Game:
             "esquerda": os.path.join("src", "assets", "sprite_knight_esquerda.png"),
             "direita": os.path.join("src", "assets", "sprite_knight_direita.png"),
         }
-        npc_sprite_paths = {
-            "frente": os.path.join("src", "assets", "sprite_knight_frente.png")
-        }
-
-        # Player starting position will be relative to the first map's dimensions
-        # We'll set it properly after loading the first map's info.
+        # Player starting position will be relative to the first map's dimensions.
         self.player = Character("Cavaleiro", BLUE, map_x=0, map_y=0, sprite_paths=player_sprite_paths)
+        # Using "protagonist" as a conventional ID for the player in story data
+        self.player.id = "protagonist" 
         
-        self.npcs = {
-            "blacksmith": Character("Ferreiro", (100,100,100), map_x=100, map_y=100, sprite_paths=npc_sprite_paths),
-            "merchant": Character("Mercador", (0,100,0), map_x=DEFAULT_MAP_WIDTH - 250, map_y=DEFAULT_MAP_HEIGHT -250, sprite_paths=npc_sprite_paths) # Initial pos, might need adjustment per map
-        }
-        self.characters = {"protagonist": self.player}
-        self.characters.update(self.npcs)
+        # NPCs will be loaded per map. This dictionary will hold NPCs for the CURRENT map.
+        self.current_map_npcs = {}
+        self.current_npc_in_dialogue = None # Stores the Character object of NPC in dialogue
 
+        # Define stories globally, referenced by NPCs in map definitions
+        self.stories = {}
+        
         blacksmith_story = Story()
         blacksmith_story.scenes = [
-            {"character": "blacksmith", "text": "Olá, nobre cavaleiro! Precisa de uma espada afiada?"},
-            {"character": "blacksmith", "text": "Minhas forjas estão sempre quentes!"}
+            # Ensure "character" uses the NPC's ID as defined in map_definitions
+            {"character": "blacksmith_mundo_principal", "text": "Olá, nobre cavaleiro! Precisa de uma espada afiada?"},
+            {"character": "blacksmith_mundo_principal", "text": "Minhas forjas estão sempre quentes!"}
         ]
-        self.npcs["blacksmith"].story = blacksmith_story
+        self.stories["blacksmith_story_generic"] = blacksmith_story
 
         merchant_story = Story()
         merchant_story.scenes = [
-            {"character": "merchant", "text": "Mercadorias raras, direto de terras distantes!"},
-            {"character": "merchant", "text": "Tenho poções e artefatos, se tiveres ouro."}
+            {"character": "merchant_mundo_principal", "text": "Mercadorias raras, direto de terras distantes!"},
+            {"character": "merchant_mundo_principal", "text": "Tenho poções e artefatos, se tiveres ouro."}
         ]
-        self.npcs["merchant"].story = merchant_story
+        self.stories["merchant_story_generic"] = merchant_story
         
         self.current_dialogue_story = None
-        self.tile_size = 100 # Define tile_size before map_definitions if used in target_player_pos calculations
-        self.current_dialogue_background_surface = None # For map-specific dialogue backgrounds
+        self.tile_size = 100 
+        self.current_dialogue_background_surface = None
+
+        # Define NPC sprite paths that can be reused or defined per NPC in map_definitions
+        self.default_npc_sprite_paths = {
+            "frente": os.path.join("src", "assets", "sprite_knight_frente.png") # Placeholder
+        }
 
         self.map_definitions = {
             "mundo_principal": {
                 "layout_file": os.path.join("src", "assets", "map_layout.map"),
                 "background_image": os.path.join("src", "assets", "map_image.png"),
-                "dialogue_background_image": os.path.join("src", "assets", "fundo_dialogo_castelo.png"), # Placeholder
+                "dialogue_background_image": os.path.join("src", "assets", "fundo_dialogo_castelo.png"),
                 "pixel_width": 2000, 
                 "pixel_height": 2000,
                 "portals": {
@@ -74,20 +77,45 @@ class Game:
                     (9, 12): {"target_map_key": "caverna_secreta", "target_player_pos": (150, 600)},
                     (10, 12): {"target_map_key": "caverna_secreta", "target_player_pos": (150, 600)},
                     (7, 7): {"target_map_key": "caverna_secreta", "target_player_pos": (100, 100)},
-                }
+                },
+                "npcs": [
+                    {
+                        "id": "blacksmith_mundo_principal", # Unique ID for this NPC on this map
+                        "name": "Ferreiro",
+                        "sprite_paths": self.default_npc_sprite_paths, # Can be specific
+                        "map_x": 200, "map_y": 250, # Position on this map
+                        "story_key": "blacksmith_story_generic" # Refers to self.stories
+                    },
+                    {
+                        "id": "merchant_mundo_principal",
+                        "name": "Mercador",
+                        "sprite_paths": self.default_npc_sprite_paths,
+                        "map_x": 1700, "map_y": 1700,
+                        "story_key": "merchant_story_generic"
+                    }
+                ]
             },
             "caverna_secreta": {
                 "layout_file": os.path.join("src", "assets", "map_caverna.map"),
                 "background_image": os.path.join("src", "assets", "caverna_bg_animated.png"),
-                "dialogue_background_image": os.path.join("src", "assets", "fundo_dialogo_castelo.png"), # Placeholder
+                "dialogue_background_image": os.path.join("src", "assets", "fundo_dialogo_castelo.png"),
                 "background_animation_frames": 3,
                 "pixel_width": 1000,
                 "pixel_height": 342,
                 "repeat_x": 3,
                 "portals": {
                     (2, 1): {"target_map_key": "mundo_principal", "target_player_pos": (9 * self.tile_size + self.tile_size // 2, 13 * self.tile_size)},
-                    # Por simplicidade, vamos assumir que a lógica de detecção de portal lidará com isso.
-                }
+                },
+                "npcs": [
+                    # Example: Add a different NPC or a different instance for this map
+                    # {
+                    #     "id": "cave_guardian",
+                    #     "name": "Guardião da Caverna",
+                    #     "sprite_paths": {"frente": os.path.join("src", "assets", "guardian_sprite.png")},
+                    #     "map_x": 500, "map_y": 150,
+                    #     "story_key": "guardian_story" # Assuming guardian_story is in self.stories
+                    # }
+                ]
             }
         }
         self.current_map_key = "mundo_principal"
@@ -200,6 +228,31 @@ class Game:
 
         self.map_data = self.load_map_data(self.current_map_info["layout_file"])
         self._create_collision_rects()
+
+        # Load NPCs for the current map
+        self.current_map_npcs.clear()
+        npc_configs = self.current_map_info.get("npcs", [])
+        for config in npc_configs:
+            npc_id = config["id"]
+            npc_name = config["name"]
+            sprite_paths = config.get("sprite_paths", self.default_npc_sprite_paths) # Fallback to default
+            map_x = config["map_x"]
+            map_y = config["map_y"]
+            story_key = config.get("story_key")
+
+            new_npc = Character(name=npc_name, map_x=map_x, map_y=map_y, sprite_paths=sprite_paths)
+            new_npc.id = npc_id # Assign the ID to the character object for story referencing
+
+            if story_key and story_key in self.stories:
+                new_npc.story = self.stories[story_key]
+            else:
+                new_npc.story = None # Or a default empty story
+                if story_key:
+                    print(f"Warning: Story key '{story_key}' for NPC '{npc_id}' not found in self.stories.")
+            
+            self.current_map_npcs[npc_id] = new_npc
+            print(f"Loaded NPC: {npc_id} at ({map_x},{map_y}) for map {self.current_map_key}")
+
 
         # Load dialogue background for the current map
         self.current_dialogue_background_surface = None # Reset
@@ -354,48 +407,102 @@ class Game:
                         if self.current_dialogue_story:
                             self.current_dialogue_story.next_scene()
                             scene = self.current_dialogue_story.get_current_scene()
-                            if scene is None: # Checa se get_current_scene retornou None
-                                self.game_state = "map"
-                                self.current_dialogue_story = None # Limpa a história atual
-                                self.dialogue_system.current_character = None # Limpa o personagem no sistema de diálogo
-                                self.dialogue_system.current_text = "" # Limpa o texto no sistema de diálogo
-                                self.dialogue_exit_active = True # Activate flag
+                            if scene is None: 
+                                self.game_state = "map" # Or "playing"
+                                if self.current_npc_in_dialogue: # Clear dialogue state for the NPC
+                                    self.current_npc_in_dialogue.is_in_dialogue = False
+                                self.current_npc_in_dialogue = None
+                                self.current_dialogue_story = None
+                                self.dialogue_system.clear_dialogue()
+                                self.dialogue_exit_active = True 
                             else:
-                                character_in_dialogue = self.characters.get(scene["character"])
-                                if character_in_dialogue:
-                                    self.dialogue_system.set_dialogue(character_in_dialogue, scene["text"])
+                                speaker_id_from_scene = scene["character"]
+                                speaker_object = None
+                                if speaker_id_from_scene == self.player.id: # Check against player's assigned ID
+                                    speaker_object = self.player
+                                elif speaker_id_from_scene in self.current_map_npcs:
+                                    speaker_object = self.current_map_npcs[speaker_id_from_scene]
+                                
+                                if speaker_object:
+                                    self.dialogue_system.set_dialogue(speaker_object, scene["text"])
+                                else:
+                                    print(f"Error: Speaker ID '{speaker_id_from_scene}' in story not found.")
+                                    # Potentially end dialogue or skip scene
+                                    self.game_state = "map" # Or "playing"
+                                    if self.current_npc_in_dialogue:
+                                       self.current_npc_in_dialogue.is_in_dialogue = False
+                                    self.current_npc_in_dialogue = None
+                                    self.current_dialogue_story = None
+                                    self.dialogue_system.clear_dialogue()
+
                     elif event.key == pygame.K_ESCAPE:
                         if self.game_state == "dialogue":
-                            self.dialogue_system.clear_dialogue() # Use the new clear method
-                            self.game_state = "playing"
-                            # Ensure the character is no longer marked as in dialogue
-                            # This should be handled by clear_dialogue, but as a safeguard:
-                            if self.current_npc_in_dialogue:
-                                self.current_npc_in_dialogue.is_in_dialogue = False 
-                                self.current_npc_in_dialogue = None
-                elif self.game_state == "map":
+                            if self.current_npc_in_dialogue: # Clear dialogue state for the NPC
+                                self.current_npc_in_dialogue.is_in_dialogue = False
+                            self.current_npc_in_dialogue = None
+                            self.dialogue_system.clear_dialogue() 
+                            self.game_state = "map" # Changed from "playing" to "map" to match other dialogue exits
+                            # self.current_npc_in_dialogue was already cleared by clear_dialogue if it sets self.current_character to None
+                elif self.game_state == "map": # Assuming "map" is the state for free roaming
+                    if event.key == pygame.K_e: # Example: 'E' to interact
+                        # Check for NPC interaction
+                        player_interaction_rect = self.player.get_interaction_rect() # Assumes Character has such a method
+                        for npc_id, npc_object in self.current_map_npcs.items():
+                            if npc_object.get_rect().colliderect(player_interaction_rect): # Assumes Character has get_rect()
+                                self._handle_dialogue_interaction(npc_object)
+                                break # Interact with the first NPC found
+                    
                     if event.key == pygame.K_ESCAPE:
                         self.running = False
 
-    def _handle_dialogue_interaction(self, npc):
-        if npc and npc.dialogues:
+    def _handle_dialogue_interaction(self, npc_character):
+        if npc_character and npc_character.story:
             self.game_state = "dialogue"
-            self.current_npc_in_dialogue = npc # Keep track of the NPC
-            # npc.is_in_dialogue = True # This is now set in dialogue_system.set_dialogue
-            story_key = npc.dialogues[npc.current_dialogue_index]
+            self.current_npc_in_dialogue = npc_character
+            self.current_dialogue_story = npc_character.story
+            self.current_dialogue_story.reset() # Start story from the beginning
+            
+            first_scene = self.current_dialogue_story.get_current_scene()
+            if first_scene:
+                speaker_id_from_scene = first_scene["character"]
+                speaker_object = None
+                if speaker_id_from_scene == self.player.id:
+                    speaker_object = self.player
+                elif speaker_id_from_scene in self.current_map_npcs:
+                    speaker_object = self.current_map_npcs[speaker_id_from_scene]
+                
+                if speaker_object:
+                    self.dialogue_system.set_dialogue(speaker_object, first_scene["text"])
+                else:
+                    print(f"Error: Speaker ID '{speaker_id_from_scene}' for first scene not found.")
+                    self.game_state = "map" 
+                    self.current_npc_in_dialogue = None
+                    self.current_dialogue_story = None
+            else: # Story has no scenes
+                print(f"Warning: Story for NPC '{npc_character.name}' has no scenes.")
+                self.game_state = "map"
+                self.current_npc_in_dialogue = None
+                self.current_dialogue_story = None
+        else:
+            if npc_character:
+                 print(f"Info: NPC '{npc_character.name}' has no story to tell.")
+            # No story or no NPC, remain in current state or switch to map/playing
+            # self.game_state = "map" # Or "playing"
 
     def update(self):
-        if self.game_state == "playing":
-            # ... (player movement and other game logic)
-            # Update animations for all characters (player and NPCs)
-            self.player.update_animation()
-            for npc in self.npcs.values():
-                npc.update_animation() # Ensure NPCs on map also update their animation state
+        # Update animations regardless of game state for characters that might be on screen
+        self.player.update_animation()
+        for npc in self.current_map_npcs.values():
+            npc.update_animation()
+        
+        if self.game_state == "dialogue":
+            # Specific dialogue updates, like character in dialogue animation (already covered by above)
+            if self.dialogue_system.current_character: # This is the character currently speaking
+                 self.dialogue_system.current_character.update_animation() # Ensure speaker animates
+            # Make sure the NPC being talked TO also updates its is_in_dialogue state if needed
+            if self.current_npc_in_dialogue and not self.current_npc_in_dialogue.is_in_dialogue:
+                self.current_npc_in_dialogue.is_in_dialogue = True
 
-        elif self.game_state == "dialogue":
-            # Update animation for the character in dialogue
-            if self.dialogue_system.current_character:
-                self.dialogue_system.current_character.update_animation()
 
         if self.portal_is_activating:
             self.portal_activation_timer -= 1
@@ -450,7 +557,7 @@ class Game:
             # current_map_pixel_width = self.current_map_info["pixel_width"] # Isso foi movido para self.current_map_effective_pixel_width
             # current_map_pixel_height = self.current_map_info["pixel_height"]
             if dx != 0 or dy != 0: self.player.move(dx, dy, self.current_map_effective_pixel_width, self.current_map_pixel_height, self.collision_map_rects)
-            self.player.update_animation()
+            # self.player.update_animation() # Moved to top of update
 
             player_feet_x = self.player.map_x + self.player.collision_box_offset_x + self.player.collision_box_width // 2
             player_feet_y = self.player.map_y + self.player.collision_box_offset_y + self.player.collision_box_height // 2
@@ -475,126 +582,57 @@ class Game:
                 if current_tile_key == 'p' or current_tile_key == 'f':
                     # Check if this specific tile coordinate is defined as a portal in the current map's settings
                     if current_tile_coords_in_pattern in self.current_map_info.get("portals", {}):
-                        portal_data = self.current_map_info["portals"][current_tile_coords_in_pattern]
-                        
-                        # Background override logic:
-                        # Only change background for 'p' tiles if raw_portal_open_image exists.
-                        # For 'f' tiles, or if 'p' tile and no raw_portal_open_image, ensure no background override.
-                        if current_tile_key == 'p' and self.raw_portal_open_image:
-                            current_map_pattern_width = self.current_map_info["pixel_width"]
-                            current_map_pattern_height = self.current_map_info["pixel_height"]
-                            self.scaled_portal_open_background_override = pygame.transform.scale(
-                                self.raw_portal_open_image,
-                                (current_map_pattern_width, current_map_pattern_height)
-                            )
-                        else:
-                            # For 'f' tiles, or 'p' tiles without a specific portal open image,
-                            # ensure scaled_portal_open_background_override is None.
-                            self.scaled_portal_open_background_override = None
-
-                        # If it's an 'f' tile, change it to 'a' immediately
-                        if current_tile_key == 'f':
-                            f_col_idx = current_tile_coords_in_pattern[0]
-                            f_row_idx = current_tile_coords_in_pattern[1]
-                            if 0 <= f_row_idx < len(self.map_data) and \
-                               0 <= f_col_idx < len(self.map_data[f_row_idx]):
-                                self.map_data[f_row_idx][f_col_idx] = 'a'
-                                # print(f"DEBUG: Tile at ({f_col_idx}, {f_row_idx}) changed from 'f' to 'a' on activation.")
-
-
-                        self.portal_is_activating = True
-                        self.portal_activation_timer = self.portal_activation_delay
-                        
-                        # Store portal data
-                        self.portal_target_info = portal_data.copy() 
-                        # No longer need to store "f_portal_original_coords" here for later change
-                        
-                        return # Exit update early as portal sequence has started
+                        portal_info = self.current_map_info["portals"][current_tile_coords_in_pattern]
+                        if not self.portal_is_activating:
+                            self.portal_is_activating = True
+                            self.portal_activation_timer = self.portal_activation_delay
+                            self.portal_target_info = portal_info
+                            
+                            # If it's an 'f' tile (NPC/special portal), change it to 'a' immediately
+                            if current_tile_key == 'f':
+                                self.map_data[tile_row][tile_col_in_pattern] = 'a'
+                                # Ensure 'f' portals do not use the special opening background
+                                self.scaled_portal_open_background_override = None 
+                            elif self.raw_portal_open_image: # For 'p' tiles, use override
+                                # Scale the portal open image to the base pattern width of the current map
+                                base_map_width = self.current_map_info["pixel_width"]
+                                base_map_height = self.current_map_info["pixel_height"]
+                                self.scaled_portal_open_background_override = pygame.transform.scale(self.raw_portal_open_image, (base_map_width, base_map_height))
             
-            for npc in self.npcs.values():
-                # NPCs can also have directions, but for now, they face "frente" and animate if set
-                if npc.directional_frames.get("frente"): # Check if NPC has 'frente' frames
-                    npc.current_direction = "frente"
-                    if len(npc.directional_frames["frente"]) > 1: # If NPC has animation frames
-                        npc.is_moving = True # Make NPCs animate if they have multiple frames
-                    else:
-                        npc.is_moving = False
-                else: # No 'frente' frames, maybe a static sprite or error
-                    npc.is_moving = False
-                npc.update_animation()
+            # NPC updates (like movement, decisions, etc. - not just animation) could go here
+            # For now, only animation is handled at the top of update()
+            # Example: Check for player interaction (moved to events for key press)
+            
             self.camera.update(self.player)
 
-            player_rect = pygame.Rect(self.player.map_x, self.player.map_y, self.player.map_sprite_width, self.player.map_sprite_height)
-            
-            # Check for NPC collision only if dialogue_exit_active is False
-            if not self.dialogue_exit_active:
-                for npc_name, npc in self.npcs.items():
-                    npc_rect = pygame.Rect(npc.map_x, npc.map_y, npc.map_sprite_width, npc.map_sprite_height)
-                    if player_rect.colliderect(npc_rect) and npc.story:
-                        self.game_state = "dialogue"
-                        self.current_dialogue_story = npc.story
-                        self.current_dialogue_story.reset() # Reseta a história do NPC para começar do início
-                        scene = self.current_dialogue_story.get_current_scene()
-                        if scene: # Deve haver uma cena após o reset
-                            character_in_dialogue = self.characters.get(scene["character"])
-                            if character_in_dialogue:
-                                self.dialogue_system.set_dialogue(character_in_dialogue, scene["text"])
-                        break # Interage com um NPC de cada vez
-            # If player is not colliding with any NPC, reset the flag
-            elif not any(player_rect.colliderect(pygame.Rect(npc.map_x, npc.map_y, npc.map_sprite_width, npc.map_sprite_height)) for npc in self.npcs.values()):
-                self.dialogue_exit_active = False
+            # player_rect = pygame.Rect(self.player.map_x, self.player.map_y, self.player.map_sprite_width, self.player.map_sprite_height) # Not used
 
-        elif self.game_state == "dialogue":
-            # Lógica de animação para personagem em diálogo
-            current_char_in_dialogue = self.dialogue_system.current_character
-            if current_char_in_dialogue:
-                # Check if the character has 'frente' frames and more than one frame for animation
-                frente_frames = current_char_in_dialogue.directional_frames.get("frente", [])
-                if len(frente_frames) > 1:
-                    current_char_in_dialogue.is_moving = True # Força animação durante diálogo
-                    current_char_in_dialogue.update_animation()
-                else:
-                    current_char_in_dialogue.is_moving = False # No animation if single frame or no 'frente' frames
-                    current_char_in_dialogue.update_animation() # Still call to reset frame index if needed
+
+        # elif self.game_state == "dialogue": # Dialogue specific updates are now at the top or within events
+            # pass
+            
 
     def draw(self):
-        self.screen.fill(BLACK) # Default screen fill
+        self.screen.fill(BLACK) # Default background if others fail
 
-        if self.game_state == "map":
-            self.draw_background() 
-            player_map_pos_rect = pygame.Rect(self.player.map_x, self.player.map_y, self.player.map_sprite_width, self.player.map_sprite_height)
-            self.player.draw_on_map(self.screen, self.camera.apply_to_rect(player_map_pos_rect).topleft)
-            for npc in self.npcs.values():
-                npc_map_pos_rect = pygame.Rect(npc.map_x, npc.map_y, npc.map_sprite_width, npc.map_sprite_height)
-                npc.draw_on_map(self.screen, self.camera.apply_to_rect(npc_map_pos_rect).topleft)
-            instruction_text = "WASD/Setas: Mover | ESC: Sair | Aproxime-se para interagir"
-            self.screen.blit(self.font.render(instruction_text, True, WHITE), (10, 10))
-
-        elif self.game_state == "dialogue":
-            # Draw the map-specific dialogue background
-            if self.current_dialogue_background_surface:
-                self.screen.blit(self.current_dialogue_background_surface, (0, 0))
-            else:
-                # This case should ideally be handled by the fallback in _load_current_map_assets
-                self.screen.fill(DARK_GRAY) 
-
-            # Desenha personagem em diálogo e caixa de diálogo
-            if self.current_dialogue_story and self.dialogue_system.current_character:
-                # Logic for displaying character sprite during dialogue (can be enhanced)
-                char_in_dialogue = self.dialogue_system.current_character
-                # Example: Draw character on one side (e.g., left)
-                # This part might need more sophisticated positioning logic based on your DialogueSystem
-                # For now, let's assume DialogueSystem handles character display if it's part of it,
-                # or we draw it here.
-                # char_in_dialogue.draw_on_map(self.screen, (50, HEIGHT - char_in_dialogue.map_sprite_height - 50)) # Example position
-
-                # Call DialogueSystem to draw its elements (text box, text, options)
-                self.dialogue_system.draw() # Assuming DialogueSystem.draw takes the screen surface
+        if self.game_state == "dialogue" and self.current_dialogue_background_surface:
+            self.screen.blit(self.current_dialogue_background_surface, (0,0))
+            # DialogueSystem's draw method will draw the character sprite and text box over this
+        else: # "map" or "playing" state
+            self.draw_background() # Draws map background and tiles
             
+            # Draw player
+            self.player.draw_on_map(self.screen, (self.player.map_x + self.camera.camera_rect.x, self.player.map_y + self.camera.camera_rect.y))
+
+            # Draw NPCs for the current map
+            for npc_id, npc_obj in self.current_map_npcs.items():
+                npc_obj.draw_on_map(self.screen, (npc_obj.map_x + self.camera.camera_rect.x, npc_obj.map_y + self.camera.camera_rect.y))
+
+        # If in dialogue state, draw dialogue UI on top of everything else for that state
+        if self.game_state == "dialogue":
+            self.dialogue_system.draw() 
             instruction_text = "Espaço: Avançar | ESC: Fechar Diálogo"
             self.screen.blit(self.font.render(instruction_text, True, WHITE), (10, HEIGHT - 30))
-
-
         
         pygame.display.flip()
 

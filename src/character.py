@@ -65,6 +65,8 @@ class Character:
         self.collision_box_offset_x = (self.map_sprite_width - self.collision_box_width) // 2
         self.collision_box_offset_y = self.map_sprite_height - self.collision_box_height
 
+        self.id = None # Added to store unique NPC ID if needed
+        self.story = None # Added to store Story object
 
     def update_animation(self):
         frames_key_to_use = "frente"
@@ -101,12 +103,35 @@ class Character:
                                                    self.directional_frames.get("frente", [])) # Fallback to "frente"
 
         if active_frames:
-            # Ensure current_frame_index is valid for the current set of frames
             idx = self.current_frame_index
-            if idx >= len(active_frames): # Should be handled by modulo in update_animation, but good check
+            if idx >= len(active_frames): 
                 idx = 0
             return active_frames[idx]
         return None
+
+    def get_rect(self):
+        """Returns the character's bounding box rectangle on the map."""
+        return pygame.Rect(self.map_x, self.map_y, self.map_sprite_width, self.map_sprite_height)
+
+    def get_interaction_rect(self, interaction_reach=10):
+        """Returns a slightly larger rectangle for interaction detection."""
+        # Center of the base rect
+        base_rect = self.get_rect()
+        center_x = base_rect.centerx
+        center_y = base_rect.centery
+        
+        # Make it slightly larger for easier interaction
+        interaction_width = base_rect.width + interaction_reach * 2
+        interaction_height = base_rect.height + interaction_reach * 2
+        
+        return pygame.Rect(
+            center_x - interaction_width // 2,
+            center_y - interaction_height // 2,
+            interaction_width,
+            interaction_height
+        )
+
+    # Remove or comment out the old get_dialogue_sprite method
 
     def move(self, dx, dy, map_width, map_height, collision_rects=None):
         # Attempt X movement
