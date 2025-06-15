@@ -7,7 +7,7 @@ class Character:
     def __init__(self, name, color=BLUE, map_x=0, map_y=0, sprite_paths=None): # Changed sprite_path to sprite_paths
         self.name = name
         self.color = color
-        # Default dialogue sprite size, can be overridden by 'frente' sprite
+        # Default dialogue sprite size, can be overridden by \'frente\' sprite
         self.dialogue_sprite_original_width = 150 
         self.dialogue_sprite_original_height = 200
 
@@ -17,6 +17,7 @@ class Character:
         self.animation_timer = 0
         self.is_moving = False
         self.current_direction = "frente" # Default direction
+        self.is_in_dialogue = False # Added for dialogue animation
 
         if sprite_paths:
             for direction, path in sprite_paths.items():
@@ -66,22 +67,46 @@ class Character:
 
 
     def update_animation(self):
-        active_frames = self.directional_frames.get(self.current_direction, self.directional_frames.get("frente", []))
+        frames_key_to_use = "frente"
+        should_animate_continuously = False
 
-        if not active_frames or len(active_frames) <= 1: # Not animated if no frames or just a single frame
-            self.current_frame_index = 0 # Reset to first frame if available (or stay at 0 if no frames)
-            self.animation_timer = 0
-            return
+        if self.is_in_dialogue:
+            frames_key_to_use = "frente"
+            should_animate_continuously = True # Animate idle in dialogue
+        else:
+            frames_key_to_use = self.current_direction
+            should_animate_continuously = self.is_moving # Animate only if moving on map
 
-        if not self.is_moving:
+        active_frames = self.directional_frames.get(frames_key_to_use, 
+                                                   self.directional_frames.get("frente", [])) # Fallback to "frente"
+
+        if not active_frames or len(active_frames) <= 1:
             self.current_frame_index = 0
             self.animation_timer = 0
             return
-        
-        self.animation_timer += 1
-        if self.animation_timer >= self.animation_speed:
+
+        if should_animate_continuously:
+            self.animation_timer += 1
+            if self.animation_timer >= self.animation_speed:
+                self.animation_timer = 0
+                self.current_frame_index = (self.current_frame_index + 1) % len(active_frames)
+        else: # Not moving and not in dialogue (or single frame animation)
+            self.current_frame_index = 0 # Reset to first frame
             self.animation_timer = 0
-            self.current_frame_index = (self.current_frame_index + 1) % len(active_frames)
+
+    def get_current_animated_frame(self) -> pygame.Surface | None:
+        frames_key_to_use = "frente" if self.is_in_dialogue else self.current_direction
+        
+        active_frames = self.directional_frames.get(frames_key_to_use, 
+                                                   self.directional_frames.get("frente", [])) # Fallback to "frente"
+
+        if active_frames:
+            # Ensure current_frame_index is valid for the current set of frames
+            idx = self.current_frame_index
+            if idx >= len(active_frames): # Should be handled by modulo in update_animation, but good check
+                idx = 0
+            return active_frames[idx]
+        return None
 
     def move(self, dx, dy, map_width, map_height, collision_rects=None):
         # Attempt X movement
@@ -141,14 +166,18 @@ class Character:
         self.map_y = max(0, min(self.map_y, map_height - self.map_sprite_height))
 
     def draw_on_map(self, screen, position):
-        active_frames = self.directional_frames.get(self.current_direction, self.directional_frames.get("frente", []))
-
-        if active_frames:
-            # Ensure current_frame_index is valid for the current set of frames
-            if self.current_frame_index >= len(active_frames):
-                self.current_frame_index = 0
+        # active_frames = self.directional_frames.get(self.current_direction, self.directional_frames.get("frente", []))
+        # current_frame_surface = None
+        # if active_frames:
+        #     # Ensure current_frame_index is valid for the current set of frames
+        #     if self.current_frame_index >= len(active_frames):
+        #         self.current_frame_index = 0
             
-            current_frame_surface = active_frames[self.current_frame_index]
+        #     current_frame_surface = active_frames[self.current_frame_index]
+        
+        current_frame_surface = self.get_current_animated_frame()
+
+        if current_frame_surface:
             scaled_sprite = pygame.transform.scale(current_frame_surface, (self.map_sprite_width, self.map_sprite_height))
             screen.blit(scaled_sprite, position)
         else:

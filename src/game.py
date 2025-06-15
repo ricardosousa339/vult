@@ -59,11 +59,13 @@ class Game:
         
         self.current_dialogue_story = None
         self.tile_size = 100 # Define tile_size before map_definitions if used in target_player_pos calculations
+        self.current_dialogue_background_surface = None # For map-specific dialogue backgrounds
 
         self.map_definitions = {
             "mundo_principal": {
                 "layout_file": os.path.join("src", "assets", "map_layout.map"),
                 "background_image": os.path.join("src", "assets", "map_image.png"),
+                "dialogue_background_image": os.path.join("src", "assets", "fundo_dialogo_castelo.png"), # Placeholder
                 "pixel_width": 2000, 
                 "pixel_height": 2000,
                 "portals": {
@@ -71,20 +73,19 @@ class Game:
                     (10, 11): {"target_map_key": "caverna_secreta", "target_player_pos": (150, 600)},
                     (9, 12): {"target_map_key": "caverna_secreta", "target_player_pos": (150, 600)},
                     (10, 12): {"target_map_key": "caverna_secreta", "target_player_pos": (150, 600)},
+                    (7, 7): {"target_map_key": "caverna_secreta", "target_player_pos": (100, 100)},
                 }
             },
             "caverna_secreta": {
                 "layout_file": os.path.join("src", "assets", "map_caverna.map"),
-                "background_image": os.path.join("src", "assets", "caverna_bg_animated.png"), # Updated
-                "background_animation_frames": 4, # Added
-                "pixel_width": 1000,  # Largura do padrão original da caverna
-                "pixel_height": 342, # Altura da caverna
-                "repeat_x": 3, # Repetir o padrão da caverna 3 vezes horizontalmente
+                "background_image": os.path.join("src", "assets", "caverna_bg_animated.png"),
+                "dialogue_background_image": os.path.join("src", "assets", "fundo_dialogo_castelo.png"), # Placeholder
+                "background_animation_frames": 3,
+                "pixel_width": 1000,
+                "pixel_height": 342,
+                "repeat_x": 3,
                 "portals": {
-                    # Portal na primeira instância do padrão
-                    (5, 3): {"target_map_key": "mundo_principal", "target_player_pos": (9 * self.tile_size + self.tile_size // 2, 13 * self.tile_size)},
-                    # Se houver um portal de saída em cada repetição, eles podem ser definidos dinamicamente ou
-                    # a lógica de detecção de portal precisará considerar repeat_x.
+                    (2, 1): {"target_map_key": "mundo_principal", "target_player_pos": (9 * self.tile_size + self.tile_size // 2, 13 * self.tile_size)},
                     # Por simplicidade, vamos assumir que a lógica de detecção de portal lidará com isso.
                 }
             }
@@ -121,18 +122,20 @@ class Game:
         self.scaled_portal_open_background_override = None # porta_aberta.png scaled to current map pattern size
 
         self.tiles = {
-            "g0": pygame.image.load(os.path.join("src", "assets", "grama_tile_0.png")).convert_alpha(),
-            "g90": pygame.image.load(os.path.join("src", "assets", "grama_tile_90.png")).convert_alpha(),
-            "g180": pygame.image.load(os.path.join("src", "assets", "grama_tile_180.png")).convert_alpha(),
-            "g270": pygame.image.load(os.path.join("src", "assets", "grama_tile_270.png")).convert_alpha(),
-            "s": pygame.image.load(os.path.join("src", "assets", "areia.png")).convert_alpha(),
-            "p": pygame.Surface((self.tile_size, self.tile_size), pygame.SRCALPHA)
+            "g0": pygame.image.load(os.path.join("src", "assets", "grama_tile_0.png")).convert_alpha(), #grama 0 graus
+            "g90": pygame.image.load(os.path.join("src", "assets", "grama_tile_90.png")).convert_alpha(), #grama 90 graus
+            "g180": pygame.image.load(os.path.join("src", "assets", "grama_tile_180.png")).convert_alpha(), #grama 180 graus
+            "g270": pygame.image.load(os.path.join("src", "assets", "grama_tile_270.png")).convert_alpha(), #grama 270 graus
+            "s": pygame.image.load(os.path.join("src", "assets", "areia.png")).convert_alpha(), # areia
+            "p": pygame.Surface((self.tile_size, self.tile_size), pygame.SRCALPHA),
+            "a": pygame.image.load(os.path.join("src", "assets", "porta_aberta.png")).convert_alpha(), # porta fechada
+            "f": pygame.image.load(os.path.join("src", "assets", "porta_fechada.png")).convert_alpha(), # porta fechada (usada para portas de NPCs)
         }
         self.tiles["p"].fill((0,0,0,0))
 
         # Load the raw portal open image (unscaled)
         try:
-            portal_open_image_path = os.path.join("src", "assets", "porta_aberta.png")
+            portal_open_image_path = os.path.join("src", "assets", "portao_aberto.png")
             self.raw_portal_open_image = pygame.image.load(portal_open_image_path).convert_alpha()
         except pygame.error as e:
             print(f"Error loading raw portal open image {portal_open_image_path}: {e}.")
@@ -197,6 +200,24 @@ class Game:
 
         self.map_data = self.load_map_data(self.current_map_info["layout_file"])
         self._create_collision_rects()
+
+        # Load dialogue background for the current map
+        self.current_dialogue_background_surface = None # Reset
+        dialogue_bg_path = self.current_map_info.get("dialogue_background_image")
+        if dialogue_bg_path:
+            try:
+                raw_dialogue_bg = pygame.image.load(dialogue_bg_path).convert()
+                self.current_dialogue_background_surface = pygame.transform.scale(raw_dialogue_bg, (WIDTH, HEIGHT))
+            except pygame.error as e:
+                print(f"Error loading dialogue background for {self.current_map_key} at {dialogue_bg_path}: {e}")
+            except FileNotFoundError:
+                print(f"Dialogue background image file not found at {dialogue_bg_path}.")
+        
+        if self.current_dialogue_background_surface is None:
+            # Fallback if loading failed or no path was provided
+            print(f"Using fallback dialogue background for map {self.current_map_key}.")
+            self.current_dialogue_background_surface = pygame.Surface((WIDTH, HEIGHT))
+            self.current_dialogue_background_surface.fill(DARK_GRAY) # Default dialogue background
 
     def switch_map(self, new_map_key, player_start_pos):
         print(f"Switching map to {new_map_key}, player to {player_start_pos}")
@@ -264,6 +285,7 @@ class Game:
             pattern_to_draw = self.current_background_image_pattern
         
         if pattern_to_draw is None: # Fallback if no pattern is available
+            # Use self.current_map_pixel_height which is an attribute of the Game class
             pattern_to_draw = pygame.Surface((base_map_pixel_width, self.current_map_pixel_height))
             pattern_to_draw.fill(BLACK)
 
@@ -343,27 +365,50 @@ class Game:
                                 if character_in_dialogue:
                                     self.dialogue_system.set_dialogue(character_in_dialogue, scene["text"])
                     elif event.key == pygame.K_ESCAPE:
-                        self.game_state = "map"
-                        if self.current_dialogue_story:
-                            # self.current_dialogue_story.reset() # Reset is handled when starting new dialogue
-                            self.current_dialogue_story = None
-                        self.dialogue_system.current_character = None
-                        self.dialogue_system.current_text = ""
-                        self.dialogue_exit_active = True # Activate flag to prevent immediate re-trigger
+                        if self.game_state == "dialogue":
+                            self.dialogue_system.clear_dialogue() # Use the new clear method
+                            self.game_state = "playing"
+                            # Ensure the character is no longer marked as in dialogue
+                            # This should be handled by clear_dialogue, but as a safeguard:
+                            if self.current_npc_in_dialogue:
+                                self.current_npc_in_dialogue.is_in_dialogue = False 
+                                self.current_npc_in_dialogue = None
                 elif self.game_state == "map":
                     if event.key == pygame.K_ESCAPE:
                         self.running = False
 
+    def _handle_dialogue_interaction(self, npc):
+        if npc and npc.dialogues:
+            self.game_state = "dialogue"
+            self.current_npc_in_dialogue = npc # Keep track of the NPC
+            # npc.is_in_dialogue = True # This is now set in dialogue_system.set_dialogue
+            story_key = npc.dialogues[npc.current_dialogue_index]
+
     def update(self):
+        if self.game_state == "playing":
+            # ... (player movement and other game logic)
+            # Update animations for all characters (player and NPCs)
+            self.player.update_animation()
+            for npc in self.npcs.values():
+                npc.update_animation() # Ensure NPCs on map also update their animation state
+
+        elif self.game_state == "dialogue":
+            # Update animation for the character in dialogue
+            if self.dialogue_system.current_character:
+                self.dialogue_system.current_character.update_animation()
+
         if self.portal_is_activating:
             self.portal_activation_timer -= 1
             
             if self.portal_activation_timer <= 0:
                 if self.portal_target_info:
+                    # The f_portal_original_coords logic for changing the tile is removed from here,
+                    # as the tile is now changed immediately upon portal activation.
                     self.switch_map(self.portal_target_info["target_map_key"], self.portal_target_info["target_player_pos"])
+                
                 # Reset portal state
                 self.portal_is_activating = False
-                self.portal_target_info = None
+                self.portal_target_info = None 
                 self.scaled_portal_open_background_override = None # Clear the override
             return # Skip other updates (like player movement) during portal activation
 
@@ -426,26 +471,45 @@ class Game:
             if 0 <= tile_row < len(self.map_data) and \
                0 <= tile_col_in_pattern < (len(self.map_data[tile_row]) if self.map_data and tile_row < len(self.map_data) else 0) :
                 current_tile_key = self.map_data[tile_row][tile_col_in_pattern]
-                if current_tile_key == 'p':
-                    # A chave do portal em self.current_map_info[\\\"portals\\\"] deve ser a coordenada no padrão
+                # Check if the player is on a portal tile ('p' or 'f')
+                if current_tile_key == 'p' or current_tile_key == 'f':
+                    # Check if this specific tile coordinate is defined as a portal in the current map's settings
                     if current_tile_coords_in_pattern in self.current_map_info.get("portals", {}):
                         portal_data = self.current_map_info["portals"][current_tile_coords_in_pattern]
                         
-                        if self.raw_portal_open_image: # Check if the base image was loaded
+                        # Background override logic:
+                        # Only change background for 'p' tiles if raw_portal_open_image exists.
+                        # For 'f' tiles, or if 'p' tile and no raw_portal_open_image, ensure no background override.
+                        if current_tile_key == 'p' and self.raw_portal_open_image:
                             current_map_pattern_width = self.current_map_info["pixel_width"]
                             current_map_pattern_height = self.current_map_info["pixel_height"]
                             self.scaled_portal_open_background_override = pygame.transform.scale(
-                                self.raw_portal_open_image, 
+                                self.raw_portal_open_image,
                                 (current_map_pattern_width, current_map_pattern_height)
                             )
-                        else: # Fallback if raw_portal_open_image failed to load
+                        else:
+                            # For 'f' tiles, or 'p' tiles without a specific portal open image,
+                            # ensure scaled_portal_open_background_override is None.
                             self.scaled_portal_open_background_override = None
+
+                        # If it's an 'f' tile, change it to 'a' immediately
+                        if current_tile_key == 'f':
+                            f_col_idx = current_tile_coords_in_pattern[0]
+                            f_row_idx = current_tile_coords_in_pattern[1]
+                            if 0 <= f_row_idx < len(self.map_data) and \
+                               0 <= f_col_idx < len(self.map_data[f_row_idx]):
+                                self.map_data[f_row_idx][f_col_idx] = 'a'
+                                # print(f"DEBUG: Tile at ({f_col_idx}, {f_row_idx}) changed from 'f' to 'a' on activation.")
+
 
                         self.portal_is_activating = True
                         self.portal_activation_timer = self.portal_activation_delay
-                        self.portal_target_info = portal_data
-                        # self.portal_tile_animating_coords removed
-                        return 
+                        
+                        # Store portal data
+                        self.portal_target_info = portal_data.copy() 
+                        # No longer need to store "f_portal_original_coords" here for later change
+                        
+                        return # Exit update early as portal sequence has started
             
             for npc in self.npcs.values():
                 # NPCs can also have directions, but for now, they face "frente" and animate if set
@@ -494,10 +558,10 @@ class Game:
                     current_char_in_dialogue.update_animation() # Still call to reset frame index if needed
 
     def draw(self):
-        self.screen.fill(BLACK)
-        self.draw_background() # No longer needs background_name
+        self.screen.fill(BLACK) # Default screen fill
 
         if self.game_state == "map":
+            self.draw_background() 
             player_map_pos_rect = pygame.Rect(self.player.map_x, self.player.map_y, self.player.map_sprite_width, self.player.map_sprite_height)
             self.player.draw_on_map(self.screen, self.camera.apply_to_rect(player_map_pos_rect).topleft)
             for npc in self.npcs.values():
@@ -507,31 +571,30 @@ class Game:
             self.screen.blit(self.font.render(instruction_text, True, WHITE), (10, 10))
 
         elif self.game_state == "dialogue":
+            # Draw the map-specific dialogue background
+            if self.current_dialogue_background_surface:
+                self.screen.blit(self.current_dialogue_background_surface, (0, 0))
+            else:
+                # This case should ideally be handled by the fallback in _load_current_map_assets
+                self.screen.fill(DARK_GRAY) 
+
             # Desenha personagem em diálogo e caixa de diálogo
             if self.current_dialogue_story and self.dialogue_system.current_character:
+                # Logic for displaying character sprite during dialogue (can be enhanced)
                 char_in_dialogue = self.dialogue_system.current_character
-                # Use 'frente' frames for dialogue, or fallback to any available frames
-                dialogue_frames = char_in_dialogue.directional_frames.get("frente", list(char_in_dialogue.directional_frames.values())[0] if char_in_dialogue.directional_frames else [])
+                # Example: Draw character on one side (e.g., left)
+                # This part might need more sophisticated positioning logic based on your DialogueSystem
+                # For now, let's assume DialogueSystem handles character display if it's part of it,
+                # or we draw it here.
+                # char_in_dialogue.draw_on_map(self.screen, (50, HEIGHT - char_in_dialogue.map_sprite_height - 50)) # Example position
 
-                if dialogue_frames:
-                    # Ensure current_frame_index is valid for dialogue_frames
-                    if char_in_dialogue.current_frame_index >= len(dialogue_frames):
-                        char_in_dialogue.current_frame_index = 0
+                # Call DialogueSystem to draw its elements (text box, text, options)
+                self.dialogue_system.draw() # Assuming DialogueSystem.draw takes the screen surface
+            
+            instruction_text = "Espaço: Avançar | ESC: Fechar Diálogo"
+            self.screen.blit(self.font.render(instruction_text, True, WHITE), (10, HEIGHT - 30))
 
-                    frame_to_draw = dialogue_frames[char_in_dialogue.current_frame_index]
-                    # Use the character's dialogue_sprite_original_width/height for consistent dialogue sprite sizing
-                    sprite_x = WIDTH // 2 - char_in_dialogue.dialogue_sprite_original_width // 2
-                    sprite_y = HEIGHT // 2 - char_in_dialogue.dialogue_sprite_original_height // 2 - 50
-                    self.screen.blit(frame_to_draw, (sprite_x, sprite_y))
-                else: # Fallback se não houver frames
-                    pygame.draw.rect(self.screen, char_in_dialogue.color, 
-                                     (WIDTH//2 - char_in_dialogue.dialogue_sprite_original_width//2, 
-                                      HEIGHT//2 - char_in_dialogue.dialogue_sprite_original_height//2 - 50, 
-                                      char_in_dialogue.dialogue_sprite_original_width, 
-                                      char_in_dialogue.dialogue_sprite_original_height))
-            self.dialogue_system.draw_dialogue_box()
-            instruction_text = "ESPAÇO: Próximo | ESC: Voltar ao Mapa"
-            self.screen.blit(self.font.render(instruction_text, True, WHITE), (10, 10))
+
         
         pygame.display.flip()
 
