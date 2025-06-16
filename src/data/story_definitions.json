@@ -1,0 +1,20 @@
+{
+    "blacksmith_story_generic": {
+        "scenes": [
+            {"character": "blacksmith_mundo_principal", "text": "Olá, nobre cavaleiro! Precisa de uma espada afiada?"},
+            {"character": "blacksmith_mundo_principal", "text": "Minhas forjas estão sempre quentes!"}
+        ]
+    },
+    "guardian_story": {
+        "scenes": [
+            {"character": "cave_guardian", "text": "Você não deveria estar aqui, forasteiro!"},
+            {"character": "cave_guardian", "text": "A caverna guarda segredos que não são para os olhos curiosos."}
+        ]
+    },
+    "merchant_story_generic": {
+        "scenes": [
+            {"character": "merchant_mundo_principal", "text": "Mercadorias raras, direto de terras distantes!"},
+            {"character": "merchant_mundo_principal", "text": "Tenho poções e artefatos, se tiveres ouro."}
+        ]
+    }
+}

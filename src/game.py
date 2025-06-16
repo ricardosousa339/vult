@@ -1,14 +1,12 @@
 import pygame
-import sys
 import os
-
-from camera import Camera
+import sys # Adicionado para sys.exit()
+from config import WIDTH, HEIGHT, BLUE, FPS, BLACK, DARK_GRAY, DEFAULT_MAP_WIDTH, DEFAULT_MAP_HEIGHT # Adicionado DEFAULT_MAP_WIDTH, DEFAULT_MAP_HEIGHT
 from character import Character
+from camera import Camera
 from dialogue_system import DialogueSystem
 from story import Story
-# Import global MAP_WIDTH, MAP_HEIGHT as fallbacks or for initial setup if needed
-from config import WIDTH, HEIGHT, FPS, MAP_WIDTH as DEFAULT_MAP_WIDTH, MAP_HEIGHT as DEFAULT_MAP_HEIGHT, BLACK, BLUE, WHITE, DARK_GRAY
-
+from data_loader import load_map_definitions, load_story_definitions, get_default_npc_sprite_paths # Novo import
 
 class Game:
     def __init__(self):
@@ -21,7 +19,7 @@ class Game:
         
         # Carregar a fonte pixelizada
         try:
-            # Substitua 'pixel_font.ttf' pelo nome do seu arquivo de fonte e 36 pelo tamanho desejado
+            # Substitua \'pixel_font.ttf\' pelo nome do seu arquivo de fonte e 36 pelo tamanho desejado
             font_path = os.path.join("src", "assets", "depixel.ttf") # Caminho corrigido
             pixel_font_size = 16 # Ajuste o tamanho conforme necessário
             self.font = pygame.font.Font(font_path, pixel_font_size)
@@ -34,6 +32,11 @@ class Game:
 
         self.dialogue_system = DialogueSystem(self.screen, self.font, WIDTH, HEIGHT)
         
+        # Carregar definições de mapa e estórias de arquivos JSON
+        self.map_definitions = load_map_definitions()
+        self.stories = load_story_definitions()
+        self.default_npc_sprite_paths = get_default_npc_sprite_paths()
+
         player_sprite_paths = {
             "frente": {"path": os.path.join("src", "assets", "sprite_knight_frente.png"), "frames": 2},
             "costas": {"path": os.path.join("src", "assets", "sprite_knight_costas.png"), "frames": 2},
@@ -49,99 +52,31 @@ class Game:
         self.current_map_npcs = {}
         self.current_npc_in_dialogue = None # Stores the Character object of NPC in dialogue
 
-        # Define stories globally, referenced by NPCs in map definitions
-        self.stories = {}
-        
-        blacksmith_story = Story()
-        blacksmith_story.scenes = [
-            # Ensure "character" uses the NPC's ID as defined in map_definitions
-            {"character": "blacksmith_mundo_principal", "text": "Olá, nobre cavaleiro! Precisa de uma espada afiada?"},
-            {"character": "blacksmith_mundo_principal", "text": "Minhas forjas estão sempre quentes!"}
-        ]
-        
-        guardiao_story = Story()
-        guardiao_story.scenes = [
-            {"character": "cave_guardian", "text": "Você não deveria estar aqui, forasteiro!"},
-            {"character": "cave_guardian", "text": "A caverna guarda segredos que não são para os olhos curiosos."}
-        ]
-        self.stories["guardian_story"] = guardiao_story
-        self.stories["blacksmith_story_generic"] = blacksmith_story
-
-        merchant_story = Story()
-        merchant_story.scenes = [
-            {"character": "merchant_mundo_principal", "text": "Mercadorias raras, direto de terras distantes!"},
-            {"character": "merchant_mundo_principal", "text": "Tenho poções e artefatos, se tiveres ouro."}
-        ]
-        self.stories["merchant_story_generic"] = merchant_story
-        
         self.current_dialogue_story = None
         self.tile_size = 100 
         self.current_dialogue_background_surface = None
 
         # Define NPC sprite paths that can be reused or defined per NPC in map_definitions
-        self.default_npc_sprite_paths = {
-            "frente": {"path": os.path.join("src", "assets", "sprite_knight_frente.png"), "frames": 1} # Placeholder
-        }
+        # self.default_npc_sprite_paths = {
+        #     "frente": {"path": os.path.join("src", "assets", "sprite_knight_frente.png"), "frames": 1} # Placeholder
+        # } # Movido para data_loader
 
-        self.map_definitions = {
-            "mundo_principal": {
-                "layout_file": os.path.join("src", "assets", "map_layout.map"),
-                "background_image": os.path.join("src", "assets", "map_image.png"),
-                "dialogue_background_image": os.path.join("src", "assets", "fundo_dialogo_castelo.png"),
-                "pixel_width": 2000, 
-                "pixel_height": 2000,
-                "portals": {
-                    (9, 11): {"target_map_key": "caverna_secreta", "target_player_pos": (150, 600)}, 
-                    (10, 11): {"target_map_key": "caverna_secreta", "target_player_pos": (150, 600)},
-                    (9, 12): {"target_map_key": "caverna_secreta", "target_player_pos": (150, 600)},
-                    (10, 12): {"target_map_key": "caverna_secreta", "target_player_pos": (150, 600)},
-                    (7, 7): {"target_map_key": "caverna_secreta", "target_player_pos": (100, 100)},
-                },
-                "npcs": [
-                    {
-                        "id": "blacksmith_mundo_principal",
-                        "name": "Ferreiro",
-                        "sprite_paths": { # Example for blacksmith, assuming single frame sprites
-                            "frente": {"path": os.path.join("src", "assets", "sprite_knight_frente.png"), "frames": 1}
-                        }, 
-                        "map_x": 200, "map_y": 250, 
-                        "story_key": "blacksmith_story_generic"
-                    },
-                    {
-                        "id": "merchant_mundo_principal",
-                        "name": "Mercador",
-                        "sprite_paths": {
-                            "frente": {"path": os.path.join("src", "assets", "sprite_knight_frente.png"), "frames": 1} # Example
-                        },
-                        "map_x": 1700, "map_y": 1700,
-                        "story_key": "merchant_story_generic"
-                    }
-                ]
-            },
-            "caverna_secreta": {
-                "layout_file": os.path.join("src", "assets", "map_caverna.map"),
-                "background_image": os.path.join("src", "assets", "caverna_bg_animated.png"),
-                "dialogue_background_image": os.path.join("src", "assets", "fundo_dialogo_castelo.png"),
-                "background_animation_frames": 3,
-                "pixel_width": 1000,
-                "pixel_height": 342,
-                "repeat_x": 3,
-                "portals": {
-                    (2, 1): {"target_map_key": "mundo_principal", "target_player_pos": (9 * self.tile_size + self.tile_size // 2, 13 * self.tile_size)},
-                },
-                "npcs": [
-                     {
-                         "id": "cave_guardian",
-                         "name": "Guardião da Caverna",
-                         "map_sprite_static_path": os.path.join("src", "assets", "guardiao_pequeno.png"), # New field
-                         "sprite_paths": {"frente": {"path": os.path.join("src", "assets", "cavaleiro2_animado.png"), "frames": 2}},
-                         "map_x": 500, "map_y": 150,
-                         "story_key": "guardian_story"
-                     }
-                ]
-            }
-        }
-        self.current_map_key = "mundo_principal"
+        # self.map_definitions = { ... } # Movido para data/map_definitions.json
+        # self.stories = { ... } # Movido para data/story_definitions.json
+        
+        # Validação inicial dos dados carregados
+        if not self.map_definitions:
+            print("CRITICAL ERROR: No map definitions loaded. Exiting.")
+            pygame.quit() # Encerra o Pygame
+            sys.exit()    # Encerra o script Python
+             
+        if not self.stories:
+            print("WARNING: No story definitions loaded. NPCs may not have dialogue.")
+
+        # Configuração inicial do mapa
+        # Garantir que haja pelo menos uma definição de mapa para evitar erros
+        # Se self.map_definitions estiver vazio, o código acima já terá encerrado o jogo.
+        self.current_map_key = next(iter(self.map_definitions)) # Pega a primeira chave do dicionário
         self.current_map_info = self.map_definitions[self.current_map_key]
         
         # Calcular a largura efetiva do mapa atual (considerando a repetição)
@@ -269,11 +204,13 @@ class Game:
             new_npc.id = npc_id
 
             if story_key and story_key in self.stories:
-                new_npc.story = self.stories[story_key]
+                story_data = self.stories[story_key] # This is a dict
+                new_npc.story = Story() # Create a Story object
+                new_npc.story.scenes = story_data.get("scenes", []) # Populate its scenes
             else:
                 new_npc.story = None
                 if story_key:
-                    print(f"Warning: Story key \'{story_key}\' for NPC \'{npc_id}\' not found in self.stories.")
+                    print(f"Warning: Story key '{story_key}' for NPC '{npc_id}' not found in self.stories.")
             
             self.current_map_npcs[npc_id] = new_npc
             print(f"Loaded NPC: {npc_id} at ({map_x},{map_y}) for map {self.current_map_key}")

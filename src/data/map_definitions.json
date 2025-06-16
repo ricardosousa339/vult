@@ -1,0 +1,58 @@
+{
+    "mundo_principal": {
+        "layout_file": "map_layout.map",
+        "background_image": "map_image.png",
+        "dialogue_background_image": "fundo_dialogo_castelo.png",
+        "pixel_width": 2000, 
+        "pixel_height": 2000,
+        "portals": {
+            "9,11": {"target_map_key": "caverna_secreta", "target_player_pos": [150, 600]},
+            "10,11": {"target_map_key": "caverna_secreta", "target_player_pos": [150, 600]},
+            "9,12": {"target_map_key": "caverna_secreta", "target_player_pos": [150, 600]},
+            "10,12": {"target_map_key": "caverna_secreta", "target_player_pos": [150, 600]},
+            "7,7": {"target_map_key": "caverna_secreta", "target_player_pos": [100, 100]}
+        },
+        "npcs": [
+            {
+                "id": "blacksmith_mundo_principal",
+                "name": "Ferreiro",
+                "sprite_paths": {
+                    "frente": {"path": "sprite_knight_frente.png", "frames": 1}
+                }, 
+                "map_x": 200, "map_y": 250, 
+                "story_key": "blacksmith_story_generic"
+            },
+            {
+                "id": "merchant_mundo_principal",
+                "name": "Mercador",
+                "sprite_paths": {
+                    "frente": {"path": "sprite_knight_frente.png", "frames": 1}
+                },
+                "map_x": 1700, "map_y": 1700,
+                "story_key": "merchant_story_generic"
+            }
+        ]
+    },
+    "caverna_secreta": {
+        "layout_file": "map_caverna.map",
+        "background_image": "caverna_bg_animated.png",
+        "dialogue_background_image": "fundo_dialogo_castelo.png",
+        "background_animation_frames": 3,
+        "pixel_width": 1000,
+        "pixel_height": 342,
+        "repeat_x": 3,
+        "portals": {
+            "2,1": {"target_map_key": "mundo_principal", "target_player_pos": [950, 1300]}
+        },
+        "npcs": [
+             {
+                 "id": "cave_guardian",
+                 "name": "Guardião da Caverna",
+                 "map_sprite_static_path": "guardiao_pequeno.png",
+                 "sprite_paths": {"frente": {"path": "cavaleiro2_animado.png", "frames": 2}},
+                 "map_x": 500, "map_y": 150,
+                 "story_key": "guardian_story"
+             }
+        ]
+    }
+}
