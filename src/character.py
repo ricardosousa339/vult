@@ -4,7 +4,7 @@ import pygame
 BLUE = (100, 150, 255) 
 
 class Character:
-    def __init__(self, name, color=BLUE, map_x=0, map_y=0, sprite_paths=None): 
+    def __init__(self, name, color=BLUE, map_x=0, map_y=0, sprite_paths=None, map_sprite_static_path=None): 
         self.name = name
         self.color = color
         self.dialogue_sprite_original_width = 150 
@@ -12,11 +12,20 @@ class Character:
 
         self.directional_frames = {} 
         self.current_frame_index = 0
-        self.animation_speed = 30 # Aumentado de 15 para 30 para diminuir a velocidade da animação
+        self.animation_speed = 60 # Aumentado de 15 para 30 para diminuir a velocidade da animação
         self.animation_timer = 0
         self.is_moving = False
         self.current_direction = "frente" 
         self.is_in_dialogue = False 
+        self.map_sprite_surface = None # For static map sprite
+
+        if map_sprite_static_path:
+            try:
+                self.map_sprite_surface = pygame.image.load(map_sprite_static_path).convert_alpha()
+                # Scale it to map_sprite_width, map_sprite_height if needed, or use original size
+                # For now, let's assume it's pre-sized or we'll scale in draw_on_map
+            except pygame.error as e:
+                print(f"Cannot load static map sprite for {self.name} at {map_sprite_static_path}: {e}")
 
         if sprite_paths:
             for direction, sprite_info in sprite_paths.items():
@@ -194,19 +203,24 @@ class Character:
         self.map_y = max(0, min(self.map_y, map_height - self.map_sprite_height))
 
     def draw_on_map(self, screen, position):
-        # active_frames = self.directional_frames.get(self.current_direction, self.directional_frames.get("frente", []))
-        # current_frame_surface = None
-        # if active_frames:
-        #     # Ensure current_frame_index is valid for the current set of frames
-        #     if self.current_frame_index >= len(active_frames):
-        #         self.current_frame_index = 0
+        if self.map_sprite_surface and not self.is_moving: # NPCs are typically not moving
+            # Scale the static map sprite if it hasn't been scaled yet or if dimensions differ
+            # For simplicity, let's assume it's either pre-scaled or we scale it here once
+            # This could be optimized by scaling once in __init__ if dimensions are fixed
+            scaled_map_sprite = pygame.transform.scale(self.map_sprite_surface, (self.map_sprite_width, self.map_sprite_height))
+            screen.blit(scaled_map_sprite, position)
+        else: # Fallback to animated sprite (e.g., for player or if static map sprite not set)
+            active_frames = self.directional_frames.get(self.current_direction, self.directional_frames.get("frente", []))
+            current_frame_surface = None
+            if active_frames:
+                if self.current_frame_index >= len(active_frames):
+                    self.current_frame_index = 0 # Safety check
+                current_frame_surface = active_frames[self.current_frame_index]
             
-        #     current_frame_surface = active_frames[self.current_frame_index]
-        
-        current_frame_surface = self.get_current_animated_frame()
-
-        if current_frame_surface:
-            scaled_sprite = pygame.transform.scale(current_frame_surface, (self.map_sprite_width, self.map_sprite_height))
-            screen.blit(scaled_sprite, position)
-        else:
-            pygame.draw.rect(screen, self.color, (position[0], position[1], self.map_sprite_width, self.map_sprite_height))
+            if current_frame_surface:
+                # Scale the frame to map_sprite_width and map_sprite_height
+                scaled_frame = pygame.transform.scale(current_frame_surface, (self.map_sprite_width, self.map_sprite_height))
+                screen.blit(scaled_frame, position)
+            else:
+                # Fallback: draw a simple rect if no sprite is available
+                pygame.draw.rect(screen, self.color, (position[0], position[1], self.map_sprite_width, self.map_sprite_height))

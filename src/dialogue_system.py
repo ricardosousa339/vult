@@ -12,7 +12,9 @@ class DialogueSystem:
         self.font = font
         self.screen_width = screen_width
         self.screen_height = screen_height
-        self.dialogue_box_height = 150 # Pode ser ajustado pela altura da imagem
+        # Define a altura desejada para a caixa de diálogo.
+        # Este valor será usado para escalar a imagem e para o fallback.
+        self.dialogue_box_height = 100  # Altura reduzida (era 150)
         self.current_text = ""
         self.current_character = None
 
@@ -21,29 +23,31 @@ class DialogueSystem:
             # Substitua 'dialogue_box_pixel.png' pelo nome real do seu arquivo
             dialogue_box_path = os.path.join("src", "assets", "dialogue_box.png") 
             self.dialogue_box_image_original = pygame.image.load(dialogue_box_path).convert_alpha()
-            # Redimensionar a caixa de diálogo para a largura da tela e altura desejada
-            # Você pode querer que a altura seja baseada na proporção da imagem original
-            aspect_ratio = self.dialogue_box_image_original.get_width() / self.dialogue_box_image_original.get_height()
+            
             scaled_width = self.screen_width
-            scaled_height = int(scaled_width / aspect_ratio) 
-            # Ou defina uma altura fixa e escale proporcionalmente:
-            # scaled_height = self.dialogue_box_height 
-            # scaled_width = int(scaled_height * aspect_ratio)
-            # self.screen_width - (self.screen_width - scaled_width) // 2 # para centralizar se não for full width
+            # Usar a altura definida em self.dialogue_box_height para o escalonamento vertical
+            scaled_height = self.dialogue_box_height 
+            
+            # Remover cálculo de aspect_ratio e a linha original de scaled_height:
+            # aspect_ratio = self.dialogue_box_image_original.get_width() / self.dialogue_box_image_original.get_height()
+            # scaled_height = int(scaled_width / aspect_ratio) 
 
             self.dialogue_box_image = pygame.transform.scale(self.dialogue_box_image_original, (scaled_width, scaled_height))
-            self.dialogue_box_height = self.dialogue_box_image.get_height() # Atualiza a altura com base na imagem
+            # self.dialogue_box_height já está com o valor desejado (100).
+            # A linha abaixo apenas confirmaria isso, mas pode ser mantida para clareza se preferir.
+            # self.dialogue_box_height = self.dialogue_box_image.get_height() 
             self.dialogue_box_rect = self.dialogue_box_image.get_rect(bottomleft=(0, self.screen_height))
 
         except pygame.error as e:
             print(f"Erro ao carregar a imagem da caixa de diálogo: {e}")
             self.dialogue_box_image = None # Fallback para desenho retangular
+            # self.dialogue_box_height já está definido com o valor desejado (ex: 100)
             self.dialogue_box_rect = pygame.Rect(0, self.screen_height - self.dialogue_box_height, self.screen_width, self.dialogue_box_height)
         except FileNotFoundError:
             print(f"Arquivo da caixa de diálogo não encontrado em {dialogue_box_path}")
             self.dialogue_box_image = None
+            # self.dialogue_box_height já está definido com o valor desejado (ex: 100)
             self.dialogue_box_rect = pygame.Rect(0, self.screen_height - self.dialogue_box_height, self.screen_width, self.dialogue_box_height)
-
 
     def draw(self):
         if self.dialogue_box_image:
@@ -104,7 +108,7 @@ class DialogueSystem:
             # Esses valores (padding_x, padding_y_top) podem precisar de ajuste fino
             # dependendo do design da sua dialogue_box_pixel.png
             text_padding_x = 80  # Espaçamento das bordas laterais da caixa
-            text_padding_y_top = 100 # Espaçamento do topo da caixa de diálogo para a primeira linha
+            text_padding_y_top = 25 # Espaçamento do topo da caixa de diálogo para a primeira linha
 
             text_start_x = self.dialogue_box_rect.left + text_padding_x
             text_start_y = self.dialogue_box_rect.top + text_padding_y_top

@@ -133,6 +133,7 @@ class Game:
                      {
                          "id": "cave_guardian",
                          "name": "Guardião da Caverna",
+                         "map_sprite_static_path": os.path.join("src", "assets", "guardiao_pequeno.png"), # New field
                          "sprite_paths": {"frente": {"path": os.path.join("src", "assets", "cavaleiro2_animado.png"), "frames": 2}},
                          "map_x": 500, "map_y": 150,
                          "story_key": "guardian_story"
@@ -257,20 +258,22 @@ class Game:
         for config in npc_configs:
             npc_id = config["id"]
             npc_name = config["name"]
-            sprite_paths = config.get("sprite_paths", self.default_npc_sprite_paths) # Fallback to default
+            sprite_paths = config.get("sprite_paths", self.default_npc_sprite_paths)
+            map_sprite_static_path = config.get("map_sprite_static_path") # Get the new path
             map_x = config["map_x"]
             map_y = config["map_y"]
             story_key = config.get("story_key")
 
-            new_npc = Character(name=npc_name, map_x=map_x, map_y=map_y, sprite_paths=sprite_paths)
-            new_npc.id = npc_id # Assign the ID to the character object for story referencing
+            # Pass map_sprite_static_path to Character constructor
+            new_npc = Character(name=npc_name, map_x=map_x, map_y=map_y, sprite_paths=sprite_paths, map_sprite_static_path=map_sprite_static_path)
+            new_npc.id = npc_id
 
             if story_key and story_key in self.stories:
                 new_npc.story = self.stories[story_key]
             else:
-                new_npc.story = None # Or a default empty story
+                new_npc.story = None
                 if story_key:
-                    print(f"Warning: Story key '{story_key}' for NPC '{npc_id}' not found in self.stories.")
+                    print(f"Warning: Story key \'{story_key}\' for NPC \'{npc_id}\' not found in self.stories.")
             
             self.current_map_npcs[npc_id] = new_npc
             print(f"Loaded NPC: {npc_id} at ({map_x},{map_y}) for map {self.current_map_key}")
@@ -579,7 +582,13 @@ class Game:
             # Use current map's dimensions for player movement boundaries
             # current_map_pixel_width = self.current_map_info["pixel_width"] # Isso foi movido para self.current_map_effective_pixel_width
             # current_map_pixel_height = self.current_map_info["pixel_height"]
-            if dx != 0 or dy != 0: self.player.move(dx, dy, self.current_map_effective_pixel_width, self.current_map_pixel_height, self.collision_map_rects)
+            if dx != 0 or dy != 0:
+                # Combine map collision rects with NPC collision rects
+                all_collision_rects = list(self.collision_map_rects) # Start with map tiles
+                for npc in self.current_map_npcs.values():
+                    all_collision_rects.append(npc.get_rect()) # Add NPC bounding boxes
+
+                self.player.move(dx, dy, self.current_map_effective_pixel_width, self.current_map_pixel_height, all_collision_rects)
             # self.player.update_animation() # Moved to top of update
 
             player_feet_x = self.player.map_x + self.player.collision_box_offset_x + self.player.collision_box_width // 2
@@ -644,18 +653,18 @@ class Game:
         else: # "map" or "playing" state
             self.draw_background() # Draws map background and tiles
             
-            # Draw player
-            self.player.draw_on_map(self.screen, (self.player.map_x + self.camera.camera_rect.x, self.player.map_y + self.camera.camera_rect.y))
-
-            # Draw NPCs for the current map
+            # Draw NPCs for the current map first (so they appear behind the player)
             for npc_id, npc_obj in self.current_map_npcs.items():
                 npc_obj.draw_on_map(self.screen, (npc_obj.map_x + self.camera.camera_rect.x, npc_obj.map_y + self.camera.camera_rect.y))
+
+            # Draw player on top of NPCs
+            self.player.draw_on_map(self.screen, (self.player.map_x + self.camera.camera_rect.x, self.player.map_y + self.camera.camera_rect.y))
 
         # If in dialogue state, draw dialogue UI on top of everything else for that state
         if self.game_state == "dialogue":
             self.dialogue_system.draw() 
             instruction_text = "Espaço: Avançar | ESC: Fechar Diálogo"
-            self.screen.blit(self.font.render(instruction_text, True, WHITE), (10, HEIGHT - 30))
+            #self.screen.blit(self.font.render(instruction_text, True, WHITE), (10, HEIGHT - 30))
         
         pygame.display.flip()
 
